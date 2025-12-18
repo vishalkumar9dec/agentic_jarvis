@@ -7,7 +7,7 @@ Port: 5001
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from typing import Dict, List, Optional, Any, Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel
 import inspect
 
@@ -95,7 +95,7 @@ def create_ticket(operation: str, user: str) -> Dict:
         "operation": operation,
         "user": user,
         "status": "pending",
-        "created_at": datetime.utcnow().isoformat() + "Z"
+        "created_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     }
 
     TICKETS_DB.append(new_ticket)
@@ -243,7 +243,7 @@ async def get_toolset(toolset_name: str):
     toolset = TOOLSETS[toolset_name]
     tools = []
 
-    for tool_name, tool_func in toolset.items():
+    for _, tool_func in toolset.items():
         tools.append(function_to_tool_schema(tool_func))
 
     return {
