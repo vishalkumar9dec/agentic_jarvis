@@ -123,30 +123,45 @@ TOOLSETS = {
 
 
 def function_to_tool_schema(func: Callable) -> Dict[str, Any]:
-    """Convert a Python function to MCP tool schema format.
+    """Convert a Python function to Toolbox tool schema format.
 
     Args:
         func: The function to convert
 
     Returns:
-        Tool schema dict with name, description, and parameters
+        Tool schema dict with description and parameters
     """
     sig = inspect.signature(func)
     doc = inspect.getdoc(func) or ""
 
     # Parse docstring for description
-    description = doc.split('\n\n')[0].strip() if doc else func.__name__
+    lines = doc.split('\n')
+    description = lines[0] if lines else func.__name__
 
-    # Build parameters schema
-    parameters = {
-        "type": "object",
-        "properties": {},
-        "required": []
-    }
+    # Extract parameter descriptions from docstring
+    param_descriptions = {}
+    in_args_section = False
+    for line in lines:
+        line = line.strip()
+        if line.lower().startswith('args:'):
+            in_args_section = True
+            continue
+        if line.lower().startswith('returns:'):
+            in_args_section = False
+            continue
+        if in_args_section and ':' in line:
+            parts = line.split(':', 1)
+            param_name = parts[0].strip()
+            param_desc = parts[1].strip() if len(parts) > 1 else ""
+            param_descriptions[param_name] = param_desc
+
+    # Build parameter list (not a JSON Schema object)
+    parameters = []
 
     for param_name, param in sig.parameters.items():
-        # Get type annotation
-        param_type = "string"  # default
+        param_type = "string"  # Default type
+        is_required = param.default == inspect.Parameter.empty
+
         if param.annotation != inspect.Parameter.empty:
             if param.annotation == int:
                 param_type = "integer"
@@ -159,30 +174,19 @@ def function_to_tool_schema(func: Callable) -> Dict[str, Any]:
             elif param.annotation == dict or param.annotation == Dict:
                 param_type = "object"
 
-        # Extract parameter description from docstring
-        param_desc = param_name
-        if "Args:" in doc:
-            args_section = doc.split("Args:")[1].split("Returns:")[0] if "Returns:" in doc else doc.split("Args:")[1]
-            for line in args_section.split('\n'):
-                if param_name in line:
-                    parts = line.split(':', 1)
-                    if len(parts) > 1:
-                        param_desc = parts[1].strip()
-                    break
-
-        parameters["properties"][param_name] = {
+        param_schema = {
+            "name": param_name,
             "type": param_type,
-            "description": param_desc
+            "required": is_required,
+            "description": param_descriptions.get(param_name, f"The {param_name} parameter")
         }
 
-        # Mark as required if no default value
-        if param.default == inspect.Parameter.empty:
-            parameters["required"].append(param_name)
+        parameters.append(param_schema)
 
     return {
-        "name": func.__name__,
         "description": description,
-        "inputSchema": parameters
+        "parameters": parameters,
+        "authRequired": []  # No auth required for these tools
     }
 
 
@@ -195,12 +199,6 @@ app = FastAPI(
     description="MCP-compatible toolbox server for IT operations ticket management",
     version="1.0.0"
 )
-
-
-class ExecuteRequest(BaseModel):
-    """Request model for tool execution."""
-    name: str
-    arguments: Dict[str, Any] = {}
 
 
 @app.get("/")
@@ -219,74 +217,54 @@ async def health():
     return {"status": "healthy"}
 
 
-@app.get("/toolsets")
-async def list_toolsets():
-    """List all available toolsets."""
-    return {
-        "toolsets": list(TOOLSETS.keys())
-    }
-
-
-@app.get("/toolsets/{toolset_name}")
+@app.get("/api/toolset/{toolset_name}")
 async def get_toolset(toolset_name: str):
-    """Get tools in a specific toolset.
-
-    Args:
-        toolset_name: Name of the toolset
-
-    Returns:
-        List of tools with their schemas
-    """
+    """Get toolset manifest with all tools in the toolset."""
     if toolset_name not in TOOLSETS:
-        raise HTTPException(status_code=404, detail=f"Toolset '{toolset_name}' not found")
+        return {"error": f"Toolset '{toolset_name}' not found"}, 404
 
     toolset = TOOLSETS[toolset_name]
-    tools = []
+    tools = {}
 
-    for _, tool_func in toolset.items():
-        tools.append(function_to_tool_schema(tool_func))
+    for func_name, tool_func in toolset.items():
+        tool_schema = function_to_tool_schema(tool_func)
+        # Use the function name (converted to kebab-case) as the key
+        tool_key = func_name.replace('_', '-')
+        tools[tool_key] = tool_schema
 
     return {
-        "toolset": toolset_name,
+        "serverVersion": "1.0.0",
+        "name": toolset_name,
         "tools": tools
     }
 
 
-@app.post("/execute")
-async def execute_tool(request: ExecuteRequest):
-    """Execute a tool function.
+@app.get("/api/tool/{tool_name}")
+async def get_tool(tool_name: str):
+    """Get individual tool schema."""
+    # Search for tool in all toolsets
+    for toolset_name, toolset in TOOLSETS.items():
+        for func_name, tool_func in toolset.items():
+            if func_name.replace('_', '-') == tool_name or func_name == tool_name:
+                return function_to_tool_schema(tool_func)
 
-    Args:
-        request: Tool execution request with name and arguments
+    return {"error": f"Tool '{tool_name}' not found"}, 404
 
-    Returns:
-        Result from the tool function
-    """
-    # Find the tool function
-    tool_func = None
-    for toolset in TOOLSETS.values():
-        if request.name in toolset:
-            tool_func = toolset[request.name]
-            break
 
-    if not tool_func:
-        raise HTTPException(status_code=404, detail=f"Tool '{request.name}' not found")
+@app.post("/api/tool/{tool_name}/invoke")
+async def execute_tool(tool_name: str, params: Dict[str, Any]):
+    """Execute a tool with given parameters."""
+    # Search for tool in all toolsets
+    for toolset_name, toolset in TOOLSETS.items():
+        for func_name, tool_func in toolset.items():
+            if func_name.replace('_', '-') == tool_name or func_name == tool_name:
+                try:
+                    result = tool_func(**params)
+                    return {"result": result}
+                except Exception as e:
+                    return {"error": str(e)}, 500
 
-    try:
-        # Execute the function with provided arguments
-        result = tool_func(**request.arguments)
-        return {
-            "success": True,
-            "result": result
-        }
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error": str(e)
-            }
-        )
+    return {"error": f"Tool '{tool_name}' not found"}, 404
 
 
 if __name__ == "__main__":
