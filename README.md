@@ -56,10 +56,19 @@ python main.py
 
 ## Documentation
 
+📚 **[Complete Documentation](./docs/)** - All documentation is in the `docs/` folder
+
+**Quick Links:**
+- [Quick Start Guide](./docs/QUICK_START.md) - Get started quickly
+- [Product Specification](./docs/JARVIS_PRODUCT_SPEC.md) - Complete product vision
+- [Phase 2 Plan](./docs/PHASE_2_PLAN.md) - JWT Authentication implementation
+- [Authentication Architecture](./docs/AUTHENTICATION_ARCHITECTURE.md) - Authentication design (proposed)
+- [Environment Configuration](./docs/ENVIRONMENT.md) - Configuration guide
+
+**Developer:**
 - [CLAUDE.md](./CLAUDE.md) - Development guide for Claude Code
-- [TASKS.md](./TASKS.md) - Implementation tasks and progress
-- [TOOLBOX_ARCHITECTURE.md](./TOOLBOX_ARCHITECTURE.md) - Architecture pattern explanation
-- [JARVIS_PRODUCT_SPEC.md](./JARVIS_PRODUCT_SPEC.md) - Complete product specification
+- [Toolbox Architecture](./docs/TOOLBOX_ARCHITECTURE.md) - Architecture patterns
+- [Testing Guide](./docs/TESTING_GUIDE.md) - Testing documentation
 
 ## Architecture
 

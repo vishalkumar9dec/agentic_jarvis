@@ -5,12 +5,17 @@ Provides cloud financial operations data and analytics using the finops toolbox 
 
 from google.adk.agents import LlmAgent
 from toolbox_core import ToolboxSyncClient
+from jarvis_agent.auth_context import get_authorization_header
 
 # Model configuration
 GEMINI_2_5_FLASH = "gemini-2.5-flash"
 
-# Connect to finops toolbox server
-toolbox = ToolboxSyncClient("http://localhost:5002")
+# Connect to finops toolbox server with dynamic authorization header
+# The header callable will read the bearer token from the current context
+toolbox = ToolboxSyncClient(
+    "http://localhost:5002",
+    client_headers={"Authorization": get_authorization_header}
+)
 tools = toolbox.load_toolset('finops_toolset')
 
 # Create the FinOps agent

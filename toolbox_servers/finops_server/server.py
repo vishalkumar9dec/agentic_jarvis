@@ -4,11 +4,17 @@ Provides cloud financial operations data and analytics tools via FastAPI.
 Port: 5002
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.responses import JSONResponse
 from typing import Dict, List, Optional, Any, Callable
 from pydantic import BaseModel
 import inspect
+import sys
+import os
+
+# Add parent directory to path to import auth modules
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from auth.jwt_utils import verify_jwt_token
 
 # In-memory cloud cost database
 FINOPS_DB = {
@@ -36,6 +42,36 @@ FINOPS_DB = {
         ]
     }
 }
+
+
+# ============================================================================
+# Authentication
+# ============================================================================
+
+def get_current_user(authorization: Optional[str] = Header(None)) -> Optional[str]:
+    """Extract and validate user from JWT token in Authorization header.
+
+    Args:
+        authorization: Authorization header with Bearer token
+
+    Returns:
+        Username if token is valid, None otherwise
+    """
+    if not authorization:
+        return None
+
+    # Extract token from "Bearer <token>" format
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+
+    token = parts[1]
+    payload = verify_jwt_token(token)
+
+    if not payload:
+        return None
+
+    return payload.get("username")
 
 
 # ============================================================================
@@ -192,12 +228,16 @@ TOOLSETS = {
     }
 }
 
+# Tools that require authentication (none currently - costs are org-wide)
+AUTHENTICATED_TOOLS = set()
 
-def function_to_tool_schema(func: Callable) -> Dict[str, Any]:
+
+def function_to_tool_schema(func: Callable, func_name: str = None) -> Dict[str, Any]:
     """Convert a Python function to Toolbox tool schema format.
 
     Args:
         func: The function to convert
+        func_name: Optional function name for auth check
 
     Returns:
         Tool schema dict with description and parameters
@@ -230,6 +270,10 @@ def function_to_tool_schema(func: Callable) -> Dict[str, Any]:
     parameters = []
 
     for param_name, param in sig.parameters.items():
+        # Skip current_user parameter - it's injected by auth
+        if param_name == "current_user":
+            continue
+
         param_type = "string"  # Default type
         is_required = param.default == inspect.Parameter.empty
 
@@ -254,10 +298,15 @@ def function_to_tool_schema(func: Callable) -> Dict[str, Any]:
 
         parameters.append(param_schema)
 
+    # Check if this tool requires authentication
+    auth_required = []
+    if func_name and func_name in AUTHENTICATED_TOOLS:
+        auth_required = ["bearer_token"]
+
     return {
         "description": description,
         "parameters": parameters,
-        "authRequired": []  # No auth required for these tools
+        "authRequired": auth_required
     }
 
 
@@ -298,7 +347,7 @@ async def get_toolset(toolset_name: str):
     tools = {}
 
     for func_name, tool_func in toolset.items():
-        tool_schema = function_to_tool_schema(tool_func)
+        tool_schema = function_to_tool_schema(tool_func, func_name)
         # Use the function name (converted to kebab-case) as the key
         tool_key = func_name.replace('_', '-')
         tools[tool_key] = tool_schema
@@ -317,21 +366,37 @@ async def get_tool(tool_name: str):
     for toolset_name, toolset in TOOLSETS.items():
         for func_name, tool_func in toolset.items():
             if func_name.replace('_', '-') == tool_name or func_name == tool_name:
-                return function_to_tool_schema(tool_func)
+                return function_to_tool_schema(tool_func, func_name)
 
     return {"error": f"Tool '{tool_name}' not found"}, 404
 
 
 @app.post("/api/tool/{tool_name}/invoke")
-async def execute_tool(tool_name: str, params: Dict[str, Any]):
+async def execute_tool(
+    tool_name: str,
+    params: Dict[str, Any],
+    current_user: Optional[str] = Depends(get_current_user)
+):
     """Execute a tool with given parameters."""
     # Search for tool in all toolsets
     for toolset_name, toolset in TOOLSETS.items():
         for func_name, tool_func in toolset.items():
             if func_name.replace('_', '-') == tool_name or func_name == tool_name:
                 try:
+                    # Check if tool requires authentication
+                    if func_name in AUTHENTICATED_TOOLS:
+                        if not current_user:
+                            raise HTTPException(
+                                status_code=401,
+                                detail="Authentication required for this tool"
+                            )
+                        # Inject current_user into params
+                        params["current_user"] = current_user
+
                     result = tool_func(**params)
                     return {"result": result}
+                except HTTPException:
+                    raise
                 except Exception as e:
                     return {"error": str(e)}, 500
 
