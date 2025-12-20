@@ -10,7 +10,9 @@ Complete documentation for the Agentic Jarvis multi-agent system.
 ## Product & Architecture
 
 - **[Product Specification](JARVIS_PRODUCT_SPEC.md)** - Complete product vision and features
-- **[Toolbox Architecture](TOOLBOX_ARCHITECTURE.md)** - Toolbox server pattern documentation
+- **[Toolbox Architecture](TOOLBOX_ARCHITECTURE.md)** - Toolbox server pattern documentation (Current)
+- **[Parallel Implementation](PARALLEL_IMPLEMENTATION.md)** - Running both solutions side-by-side ⭐
+- **[MCP Implementation](MCP_CORRECT_IMPLEMENTATION.md)** - MCP implementation guide (Technical)
 - **[Authentication Architecture](AUTHENTICATION_ARCHITECTURE.md)** - Per-request agent pattern (proposed)
 
 ## Phase 2: JWT Authentication

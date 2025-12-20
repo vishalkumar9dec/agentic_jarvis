@@ -1,11 +1,58 @@
-# Phase 2: JWT Authentication - Implementation Plan
+# Phase 2: MCP Implementation + JWT Authentication
+
+## ⚠️ IMPORTANT: Parallel Implementation Strategy
+
+**Phase 2 builds a NEW MCP solution alongside the current Toolbox solution.**
+
+- **Current Solution** (ports 5001, 5002, 8002, 9999) - **UNCHANGED**
+- **New MCP Solution** (ports 5011, 5012, 8012, 9990) - **NEW, PARALLEL**
+- **Both solutions** run simultaneously for comparison
+
+**📖 See [PARALLEL_IMPLEMENTATION.md](./PARALLEL_IMPLEMENTATION.md) for complete details:**
+- Directory structure (both solutions)
+- Port allocation
+- How to run both simultaneously
+- Comparison testing strategy
+
+---
+
+## Implementation Order
+
+### Part A: Build MCP Solution (FIRST) - Weeks 1-2
+**Goal**: Create NEW MCP servers (without auth first)
+- Build `tickets_mcp_server/` on port 5011 using FastMCP
+- Build `finops_mcp_server/` on port 5012 using FastMCP
+- Build `oxygen_mcp_server/` on port 8012 using FastMCP
+- Test automatic tool discovery
+- Get basic queries working
+
+### Part B: Add Authentication (SECOND) - Week 3
+**Goal**: Add JWT authentication to the NEW MCP solution
+- Add JWT validation to MCP servers
+- Implement per-request agent creation pattern
+- Use `header_provider` for bearer tokens
+- Test user-specific data filtering
+
+**Why MCP First?**
+1. MCP has native OAuth 2.1 support (better than custom)
+2. Automatic tool discovery (faster development)
+3. Per-request auth pattern is built into MCP (fixes auth bug)
+4. Keycloak-ready from day one
+5. Zero risk to existing system (parallel implementation)
+
+**📖 Technical Details**: See [MCP_CORRECT_IMPLEMENTATION.md](./MCP_CORRECT_IMPLEMENTATION.md)
+
+---
 
 ## Overview
 
-Phase 2 adds JWT (JSON Web Token) authentication to Agentic Jarvis, enabling:
+Phase 2 creates a parallel MCP-based solution with JWT authentication:
+- **Parallel implementation**: New MCP solution runs alongside current Toolbox
+- **Standard MCP protocol**: Industry-standard tool servers (FastMCP library)
+- **Automatic tool discovery**: Tools auto-discovered by agents (no manual registration)
 - **User-specific data access**: Each user sees only their own tickets, courses, and exams
-- **Secure API endpoints**: All toolbox servers require valid JWT tokens
-- **Token propagation**: Authentication passes through the entire agent chain (Root → Sub-agents → A2A agents)
+- **Secure API endpoints**: All MCP servers require valid JWT tokens
+- **Per-request authentication**: Tokens passed via `header_provider` pattern
 - **Multi-user support**: Different users can interact with Jarvis simultaneously
 
 ## Phase 2 vs Phase 3: Clear Scope Definition

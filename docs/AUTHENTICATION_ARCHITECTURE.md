@@ -1,4 +1,4 @@
-# Authentication Architecture: Per-Request Agent Pattern
+1# Authentication Architecture: Per-Request Agent Pattern
 
 ## Document Status
 **Status:** Proposal for Review
