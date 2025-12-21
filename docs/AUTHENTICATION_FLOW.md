@@ -2,9 +2,11 @@
 
 ## Overview
 
-Phase 2 implements JWT-based authentication with user-specific data access across all agents and toolbox servers.
+Phase 2 implements JWT-based authentication with user-specific data access using **ADK State Management Pattern**.
 
-## Authentication Architecture
+**CRITICAL:** Authentication uses ADK's `ToolContext` and session state, NOT per-request agent creation or token parameters.
+
+## ADK State Management Architecture (Phase 2B - CORRECT)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -13,35 +15,156 @@ Phase 2 implements JWT-based authentication with user-specific data access acros
 │     - Auth Service validates credentials                     │
 │     - JWT token issued (24-hour expiration)                  │
 └─────────────────────────┬───────────────────────────────────┘
-                          │
+                          │ JWT Token
                           v
 ┌─────────────────────────────────────────────────────────────┐
-│  2. Request with JWT Token                                   │
-│     - User makes request with Bearer token                   │
-│     - Token validated and current_user extracted             │
+│  2. HTTP Request with Bearer Token                           │
+│     - Authorization: Bearer eyJhbGc...                       │
+│     - Web UI extracts token from HTTP header                 │
 └─────────────────────────┬───────────────────────────────────┘
                           │
                           v
 ┌─────────────────────────────────────────────────────────────┐
-│  3. Root Orchestrator (Jarvis)                               │
-│     - Receives current_user context                          │
-│     - Routes to appropriate sub-agent                        │
-│     - Passes current_user to authenticated tools             │
+│  3. Store Token in ADK Session State                         │
+│     - session = adk_app.session_service.get_session_sync()   │
+│     - session.state["user:bearer_token"] = bearer_token      │
+│     - session.state["user:username"] = username              │
+│     - NO per-request agent creation!                         │
 └─────────────────────────┬───────────────────────────────────┘
                           │
-                    ┌─────┴─────┐
-                    │           │
-                    v           v
-┌───────────────────────────────────────┐  ┌─────────────────┐
-│  4a. Toolbox Servers                  │  │ 4b. A2A Agents  │
-│      (Tickets: 5001, FinOps: 5002)    │  │ (Oxygen: 8002)  │
-│                                       │  │                 │
-│  - Validate Bearer token              │  │ - Receive       │
-│  - Extract current_user               │  │   current_user  │
-│  - Inject into authenticated tools    │  │ - Filter data   │
-│  - Return user-specific data          │  │   by user       │
-└───────────────────────────────────────┘  └─────────────────┘
+                          v
+┌─────────────────────────────────────────────────────────────┐
+│  4. before_tool_callback (Centralized Auth)                  │
+│     - CallbackContext has access to state                    │
+│     - bearer_token = context.state.get("user:bearer_token")  │
+│     - Validates token before tool execution                  │
+│     - Blocks unauthenticated tool calls                      │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          v
+┌─────────────────────────────────────────────────────────────┐
+│  5. MCP Tool Execution (ToolContext)                         │
+│     - @mcp.tool()                                            │
+│     - def get_my_tickets(tool_context: ToolContext):         │
+│     -   token = tool_context.state.get("user:bearer_token")  │
+│     -   payload = verify_jwt_token(token)                    │
+│     -   current_user = payload["username"]                   │
+│     -   return filtered data                                 │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          v
+┌─────────────────────────────────────────────────────────────┐
+│  6. Response                                                  │
+│     - User-specific data returned                            │
+│     - Token never exposed in LLM prompts/logs                │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+## Layer Separation (ADK Pattern)
+
+### Layer 1: HTTP/MCP Protocol (Per-Request)
+- **Responsibility:** Extract Bearer token from Authorization header
+- **Location:** Web UI (`server_mcp.py`)
+- **MCP Requirement:** Bearer token in every HTTP request
+
+```python
+@app.post("/api/chat")
+async def chat(authorization: str = Header(None)):
+    # Extract Bearer token from HTTP header (MCP requirement)
+    bearer_token = authorization.split(" ")[1]
+```
+
+### Layer 2: ADK Session State (Session-Based)
+- **Responsibility:** Store authentication context in session
+- **Location:** ADK App session service
+- **ADK Pattern:** State with "user:" prefix
+
+```python
+    # Store token in ADK session state
+    session = adk_app.session_service.get_session_sync(...)
+    session.state["user:bearer_token"] = bearer_token  # ← Token stored here
+    session.state["user:username"] = payload.get("username")
+    adk_app.session_service.update_session_sync(session)
+```
+
+### Layer 3: Callback Layer (Centralized Auth)
+- **Responsibility:** Validate authentication before tool execution
+- **Location:** `jarvis_agent/callbacks.py`
+- **ADK Feature:** `before_tool_callback`
+
+```python
+def before_tool_callback(context: CallbackContext):
+    """Validate authentication before tool execution."""
+    tool_name = context.function_call.name
+
+    if tool_name in AUTHENTICATED_TOOLS:
+        bearer_token = context.state.get("user:bearer_token")
+
+        if not bearer_token:
+            return {"error": "Authentication required", "status": 401}
+
+        payload = verify_jwt_token(bearer_token)
+        if not payload:
+            return {"error": "Invalid or expired token", "status": 401}
+
+        # Cache user info for this invocation
+        context.state["temp:current_user"] = payload.get("username")
+
+    return None  # Allow execution
+```
+
+### Layer 4: Tool Layer (Data Access)
+- **Responsibility:** Access user data based on authenticated identity
+- **Location:** MCP tool implementations
+- **ADK Feature:** `ToolContext`
+
+```python
+from google.adk.tools import ToolContext
+
+@mcp.tool()
+def get_my_tickets(tool_context: ToolContext) -> List[Dict]:
+    """Get tickets for authenticated user."""
+
+    # Access bearer token from session state
+    bearer_token = tool_context.state.get("user:bearer_token")
+
+    if not bearer_token:
+        return {"error": "Authentication required", "status": 401}
+
+    # Validate and extract user
+    payload = verify_jwt_token(bearer_token)
+    current_user = payload.get("username")
+
+    # Return user-specific data
+    return [t for t in TICKETS_DB if t['user'] == current_user]
+```
+
+## Why McpToolset Doesn't Need Headers
+
+```python
+# ❌ WRONG (Phase 2A - Non-ADK-compliant):
+toolset = McpToolset(
+    connection_params=SseConnectionParams(
+        url="http://localhost:5011/mcp",
+        headers={"Authorization": f"Bearer {bearer_token}"}  # DON'T DO THIS!
+    )
+)
+
+# ✅ CORRECT (Phase 2B - ADK-compliant):
+toolset = McpToolset(
+    connection_params=SseConnectionParams(
+        url="http://localhost:5011/mcp"
+        # NO headers - authentication flows through ADK state!
+    )
+)
+```
+
+**Reason:** McpToolset is just the transport layer. Authentication happens at a different layer:
+1. HTTP request → Extract token (HTTP layer)
+2. Store in `session.state["user:bearer_token"]` (ADK layer)
+3. MCP tools access via `tool_context.state.get("user:bearer_token")` (Tool layer)
+
+McpToolset doesn't need to know about authentication!
 
 ## Component Responsibilities
 

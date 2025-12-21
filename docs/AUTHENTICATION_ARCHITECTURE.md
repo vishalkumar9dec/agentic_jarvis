@@ -1,16 +1,139 @@
-1# Authentication Architecture: Per-Request Agent Pattern
+1# Authentication Architecture: ADK State Management Pattern
 
 ## Document Status
-**Status:** Proposal for Review
-**Date:** January 2025
+**Status:** ⚠️ SUPERSEDED BY ADK PATTERN
+**Date:** January 2025 (Updated: 2025-12-21)
 **Phase:** 2 (JWT Authentication) - Architecture Fix
 **Author:** Phase 2 Implementation
 
+## ⚠️ CRITICAL UPDATE: ADK State Management Pattern
+
+**This document originally proposed per-request agent creation. After reviewing official ADK documentation, the CORRECT pattern is:**
+
+**✅ ADK State Management Pattern (RECOMMENDED):**
+- Agents created ONCE at startup
+- Bearer tokens stored in `session.state["user:bearer_token"]`
+- Tools access tokens via `tool_context.state.get("user:bearer_token")`
+- Authentication enforced via `before_tool_callback`
+- NO per-request agent creation needed!
+
+**❌ Per-Request Agent Creation (WRONG - Original proposal below for reference):**
+- Violates ADK best practices
+- Exposes bearer tokens in LLM prompts/logs
+- Unnecessary performance overhead (25ms/request)
+- Not OAuth 2.0 ready
+
+**See:** `AUTHENTICATION_ADK_ANALYSIS.md` for complete analysis and correct implementation.
+
+---
+
 ## Executive Summary
 
-This document proposes a critical architectural change to fix authentication in the Agentic Jarvis multi-agent system. The current implementation has a fundamental flaw where agents are created once at module import time, making it impossible to pass per-request JWT tokens to authenticated toolbox services. The proposed solution uses a **per-request agent creation pattern** that properly supports JWT authentication and is future-proof for OAuth and MCP authentication.
+**UPDATED:** This document originally proposed per-request agent creation to fix authentication. However, the correct ADK pattern uses **session state management** with `ToolContext` and callbacks, eliminating the need for per-request agent creation entirely.
 
-**Recommendation:** Implement the per-request agent pattern (Option 2) immediately.
+**Recommendation:** Use ADK State Management Pattern (see AUTHENTICATION_ADK_ANALYSIS.md and Phase2_Tasks.md Task 21)
+
+---
+
+## ADK State Management Pattern (CORRECT)
+
+### Overview
+
+Instead of creating agents per-request, use ADK's built-in state management:
+
+```python
+# ============================================================================
+# CORRECT: ADK State Management Pattern
+# ============================================================================
+
+# Step 1: Create agents ONCE at startup
+from google.adk.agents import LlmAgent
+from google.adk.tools.mcp_tool import McpToolset
+from google.adk.tools.mcp_tool.mcp_session_manager import SseConnectionParams
+
+def create_tickets_agent() -> LlmAgent:
+    """Create agent ONCE (no bearer_token parameter)."""
+
+    # NO headers - authentication flows through ADK state!
+    toolset = McpToolset(
+        connection_params=SseConnectionParams(
+            url="http://localhost:5011/mcp"
+            # NO headers here - state management handles auth
+        )
+    )
+
+    return LlmAgent(
+        name="TicketsAgent",
+        model="gemini-2.5-flash",
+        tools=[toolset]
+    )
+
+# Create agent ONCE at module level
+tickets_agent = create_tickets_agent()
+
+
+# Step 2: MCP tools access token from ToolContext
+from google.adk.tools import ToolContext
+from fastmcp import FastMCP
+
+mcp = FastMCP("tickets-server")
+
+@mcp.tool()
+def get_my_tickets(tool_context: ToolContext) -> List[Dict]:
+    """Get tickets for authenticated user."""
+
+    # Access bearer token from session state
+    bearer_token = tool_context.state.get("user:bearer_token")
+
+    if not bearer_token:
+        return {"error": "Authentication required", "status": 401}
+
+    payload = verify_jwt_token(bearer_token)
+    current_user = payload.get("username")
+
+    return [t for t in TICKETS_DB if t['user'] == current_user]
+
+
+# Step 3: Web UI stores token in session state
+from google.adk.apps import App
+
+@app.post("/api/chat")
+async def chat(authorization: str = Header(None)):
+    # Extract bearer token from HTTP header
+    bearer_token = authorization.split(" ")[1]
+
+    # Store in ADK session state (NOT agent!)
+    session = adk_app.session_service.get_session_sync(...)
+    session.state["user:bearer_token"] = bearer_token
+    adk_app.session_service.update_session_sync(session)
+
+    # Run agent (token flows through state)
+    # NO per-request agent creation!
+    response = adk_app.run_sync(user_id, session_id, message)
+```
+
+### Why This is Better
+
+| Aspect | Per-Request Agent (WRONG) | ADK State (CORRECT) |
+|--------|---------------------------|---------------------|
+| Agent creation | Every request (25ms) | Once at startup (<1ms) |
+| Bearer token location | LLM prompts/logs ❌ | Session state only ✅ |
+| OAuth 2.0 ready | No ❌ | Yes ✅ |
+| ADK compliant | No ❌ | Yes ✅ |
+| Performance | 25ms overhead | <1ms overhead |
+| Security | Tokens in logs | Tokens isolated |
+
+**See Phase2_Tasks.md Task 21 for complete implementation.**
+
+---
+
+## Original Proposal (SUPERSEDED - For Reference Only)
+
+**⚠️ WARNING: The sections below describe the WRONG pattern (per-request agent creation). They are kept for historical reference only. DO NOT implement this pattern!**
+
+**Use ADK State Management Pattern instead (see above and AUTHENTICATION_ADK_ANALYSIS.md).**
+
+---
 
 ---
 

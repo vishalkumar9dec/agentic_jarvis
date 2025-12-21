@@ -373,47 +373,164 @@ For authenticated operations, the bearer token is automatically included.""",
     return agent
 ```
 
-## Authentication Flow (CORRECT)
+## Authentication Flow (CORRECT - ADK Pattern)
 
-### How Bearer Tokens Work with FastMCP
+### ADK State Management with ToolContext
 
-**Option 1: Token as Tool Parameter**
+**✅ CORRECT: Use ToolContext and ADK Session State**
+
 ```python
-# MCP Server (FastMCP)
+# ============================================================================
+# MCP Server - Tools use ToolContext (NOT bearer_token parameter!)
+# ============================================================================
+from google.adk.tools import ToolContext
+from fastmcp import FastMCP
+
+mcp = FastMCP("tickets-server")
+
 @mcp.tool()
-def get_my_tickets(bearer_token: str) -> List[Dict]:
+def get_my_tickets(tool_context: ToolContext) -> List[Dict]:
+    """Get tickets for authenticated user.
+
+    CRITICAL: Token accessed via tool_context.state, NOT as a parameter!
+
+    Args:
+        tool_context: Automatically injected by ADK framework
+    """
+    # Access bearer token from ADK session state
+    bearer_token = tool_context.state.get("user:bearer_token")
+
+    if not bearer_token:
+        return {"error": "Authentication required", "status": 401}
+
+    # Validate token
     payload = verify_jwt_token(bearer_token)
-    current_user = payload["username"]
+    if not payload:
+        return {"error": "Invalid or expired token", "status": 401}
+
+    current_user = payload.get("username")
+
+    # Filter by authenticated user
     return [t for t in TICKETS_DB if t['user'] == current_user]
 
-# ADK Client (McpToolset)
+
+# ============================================================================
+# ADK Client - McpToolset does NOT need headers!
+# ============================================================================
+from google.adk.tools.mcp_tool import McpToolset
+from google.adk.tools.mcp_tool.mcp_session_manager import SseConnectionParams
+
+def create_tickets_agent() -> LlmAgent:
+    """Create agent ONCE (no bearer_token parameter)."""
+
+    # NO headers - authentication flows through ADK state!
+    toolset = McpToolset(
+        connection_params=SseConnectionParams(
+            url="http://localhost:5011/mcp"
+            # NO headers here - state management handles auth!
+        ),
+        tool_name_prefix="tickets_"
+    )
+
+    return LlmAgent(
+        name="TicketsAgent",
+        model="gemini-2.5-flash",
+        tools=[toolset]
+    )
+
+
+# ============================================================================
+# Web UI - Store Token in ADK Session State
+# ============================================================================
+from google.adk.apps import App
+from fastapi import Header
+
+@app.post("/api/chat")
+async def chat(
+    message: str,
+    authorization: str = Header(None)
+):
+    """Chat endpoint with ADK-compliant authentication."""
+
+    # Layer 1: Extract Bearer token from HTTP header (MCP requirement)
+    bearer_token = None
+    if authorization and authorization.startswith("Bearer "):
+        bearer_token = authorization.split(" ")[1]
+
+    # Validate token and extract user
+    user_id = "anonymous"
+    if bearer_token:
+        payload = verify_jwt_token(bearer_token)
+        if payload:
+            user_id = payload.get("user_id", "anonymous")
+
+    session_id = f"web-{user_id}"
+
+    # Get session
+    session = adk_app.session_service.get_session_sync(
+        app_name="jarvis",
+        user_id=user_id,
+        session_id=session_id
+    )
+
+    # Layer 2: Store Bearer token in ADK session state (NOT agent!)
+    if bearer_token:
+        session.state["user:bearer_token"] = bearer_token  # ← Token stored here
+        if payload:
+            session.state["user:username"] = payload.get("username")
+            session.state["user:user_id"] = payload.get("user_id")
+
+    adk_app.session_service.update_session_sync(session)
+
+    # Run agent (token flows through state automatically)
+    # NO per-request agent creation!
+    response = adk_app.run_sync(
+        user_id=user_id,
+        session_id=session_id,
+        message=message
+    )
+
+    return {"response": response}
+```
+
+### Why This is the CORRECT Pattern
+
+| Aspect | bearer_token Parameter (WRONG) | ToolContext + State (CORRECT) |
+|--------|-------------------------------|------------------------------|
+| Security | Token in LLM prompts ❌ | Token isolated in state ✅ |
+| ADK Compliance | Violates ADK patterns ❌ | Follows ADK standards ✅ |
+| OAuth 2.0 Ready | No ❌ | Yes ✅ |
+| Performance | Same | Same |
+| McpToolset Headers | Needs headers ❌ | NO headers needed ✅ |
+
+**Key Insight:** McpToolset doesn't need authentication headers because authentication flows through ADK session state at a different layer!
+
+### ❌ WRONG PATTERN (Phase 2A - For Reference Only)
+
+```python
+# DON'T DO THIS!
+@mcp.tool()
+def get_my_tickets(bearer_token: str) -> List[Dict]:  # ❌ WRONG
+    """Token as parameter exposes it in LLM prompts!"""
+    payload = verify_jwt_token(bearer_token)
+    # ...
+
+# DON'T DO THIS!
 toolset = McpToolset(
     connection_params=SseConnectionParams(
         url="http://localhost:5011/mcp",
-        headers={"Authorization": f"Bearer {bearer_token}"}
+        headers={"Authorization": f"Bearer {bearer_token}"}  # ❌ WRONG
     )
 )
-
-# When agent calls get_my_tickets, it passes bearer_token as argument
 ```
 
-**Option 2: FastAPI Middleware (Better)**
-```python
-# tickets_mcp_server/app.py
-from fastapi import Request
+**Why this is wrong:**
+1. Bearer tokens appear in LLM prompts and logs (security risk)
+2. Violates ADK best practices
+3. Not OAuth 2.0 ready
+4. Unnecessary complexity
 
-@app.middleware("http")
-async def inject_auth_context(request: Request, call_next):
-    """Extract bearer token from headers and inject into request state."""
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        request.state.bearer_token = auth_header.split(" ")[1]
-    response = await call_next(request)
-    return response
-
-# Then MCP tools can access via request.state
-# (Requires FastMCP to support context injection - need to verify)
-```
+**See:** `AUTHENTICATION_ADK_ANALYSIS.md` for complete security analysis.
 
 ## Testing the CORRECT Implementation
 

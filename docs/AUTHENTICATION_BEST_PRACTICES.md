@@ -264,71 +264,273 @@ The MCP Python SDK example demonstrates:
 
 ## Recommended Architecture
 
-### Align with MCP Best Practices
+### Two-Layer Authentication Pattern
 
-Based on MCP specification and examples, here's the recommended architecture:
+Based on MCP specification and ADK best practices, authentication operates at **two distinct layers**:
+
+#### Layer 1: HTTP/MCP Protocol Layer (Per-Request)
+
+**MCP Requirement:** Bearer tokens in Authorization header for every HTTP request.
 
 ```python
-# ============================================================================
-# Agent Factory (Durable Configuration)
-# ============================================================================
-
-def create_tickets_agent(bearer_token: str) -> LlmAgent:
-    """
-    Factory function - called per request.
-
-    Creates lightweight agent instance with authenticated HTTP client.
-    """
-    # HTTP client with bearer token (per-request)
-    toolbox = ToolboxSyncClient(
-        "http://localhost:5001",
-        client_headers={"Authorization": f"Bearer {bearer_token}"}
-    )
-
-    # Load tools (schemas can be cached)
-    tools = toolbox.load_toolset('tickets_toolset')
-
-    # Create agent instance (lightweight wrapper)
-    return LlmAgent(
-        name="TicketsAgent",
-        model=GEMINI_2_5_FLASH,
-        tools=tools
-    )
-
-# ============================================================================
-# Web UI Request Handler (Per-Request)
-# ============================================================================
-
+# Web UI extracts token from HTTP request
 @app.post("/api/chat")
 async def chat(
     request: ChatRequest,
     authorization: str = Header(None)
 ):
-    # 1. Extract token from request
-    token = extract_bearer_token(authorization)
-
-    # 2. Validate token (per MCP spec)
-    if not verify_jwt_token(token):
-        raise HTTPException(401, "Invalid token")
-
-    # 3. Create agent with THIS request's authentication context
-    root_agent = create_root_agent(bearer_token=token)
-
-    # 4. Process request with authenticated agent
-    runner = Runner(agent=root_agent, session_service=session_service)
-
-    # 5. Execute and return response
-    for event in runner.run(...):
-        # ...
+    # Extract Bearer token from HTTP header (MCP requirement)
+    bearer_token = authorization.split(" ")[1]
 ```
 
-### Why This Works
+#### Layer 2: ADK State Management Layer (Session-Based)
 
-1. **MCP Compliant:** Token validated per-request ✅
-2. **Thread Safe:** No shared mutable state ✅
-3. **Secure:** Proper isolation between users ✅
-4. **Scalable:** Works for multi-tenant, OAuth, MCP ✅
-5. **Performant:** Agent creation is <2% overhead ✅
+**ADK Pattern:** Store authentication context in session state, accessible via ToolContext.
+
+```python
+    # Store token in ADK session state (NOT in agent!)
+    session = adk_app.session_service.get_session_sync(
+        app_name="jarvis",
+        user_id=user_id,
+        session_id=session_id
+    )
+
+    # CRITICAL: Store in state with "user:" prefix
+    session.state["user:bearer_token"] = bearer_token
+    session.state["user:username"] = payload.get("username")
+    session.state["user:user_id"] = payload.get("user_id")
+
+    adk_app.session_service.update_session_sync(session)
+
+    # Run agent (token flows through state automatically)
+    response = adk_app.run_sync(
+        user_id=user_id,
+        session_id=session_id,
+        message=request.message
+    )
+```
+
+### Complete Implementation: ADK + MCP Pattern
+
+```python
+# ============================================================================
+# Step 1: MCP Tool Definitions (Access auth via ToolContext)
+# ============================================================================
+from google.adk.tools import ToolContext
+from fastmcp import FastMCP
+
+mcp = FastMCP("tickets-server")
+
+@mcp.tool()
+def get_my_tickets(tool_context: ToolContext) -> List[Dict]:
+    """Get tickets for authenticated user.
+
+    Args:
+        tool_context: Automatically injected by ADK framework
+    """
+    # Access bearer token from session state (NOT from parameters!)
+    bearer_token = tool_context.state.get("user:bearer_token")
+
+    if not bearer_token:
+        return {"error": "Authentication required", "status": 401}
+
+    # Validate and extract user
+    payload = verify_jwt_token(bearer_token)
+    if not payload:
+        return {"error": "Invalid or expired token", "status": 401}
+
+    current_user = payload.get("username")
+    return [t for t in TICKETS_DB if t['user'] == current_user]
+
+
+# ============================================================================
+# Step 2: Create Callbacks for Auth Enforcement
+# ============================================================================
+from google.adk.callbacks import CallbackContext
+
+AUTHENTICATED_TOOLS = {
+    "tickets_get_my_tickets",
+    "tickets_create_my_ticket",
+    "oxygen_get_my_courses"
+}
+
+def before_tool_callback(context: CallbackContext):
+    """Validate authentication before tool execution."""
+    tool_name = context.function_call.name
+
+    if tool_name in AUTHENTICATED_TOOLS:
+        bearer_token = context.state.get("user:bearer_token")
+
+        if not bearer_token:
+            return {
+                "error": "Authentication required",
+                "status": 401,
+                "tool": tool_name
+            }
+
+        # Validate token
+        payload = verify_jwt_token(bearer_token)
+        if not payload:
+            return {"error": "Invalid or expired token", "status": 401}
+
+        # Cache user info for this invocation
+        context.state["temp:current_user"] = payload.get("username")
+
+    return None  # Allow execution
+
+
+# ============================================================================
+# Step 3: Create Agent Factory (NO bearer_token parameter!)
+# ============================================================================
+from google.adk.agents import LlmAgent
+from google.adk.tools.mcp_tool import McpToolset
+from google.adk.tools.mcp_tool.mcp_session_manager import SseConnectionParams
+
+def create_tickets_agent() -> LlmAgent:
+    """
+    Create Tickets agent ONCE (no bearer_token parameter).
+
+    CRITICAL: McpToolset does NOT need headers!
+    Authentication flows through ADK session state.
+    """
+    # NO headers - authentication handled by ADK state
+    toolset = McpToolset(
+        connection_params=SseConnectionParams(
+            url="http://localhost:5011/mcp"
+            # NO headers here - state management handles auth!
+        ),
+        tool_name_prefix="tickets_"
+    )
+
+    return LlmAgent(
+        name="TicketsAgent",
+        model="gemini-2.5-flash",
+        description="IT operations ticket management",
+        tools=[toolset]
+    )
+
+
+def create_root_agent() -> LlmAgent:
+    """Create root agent ONCE (single instance)."""
+    tickets_agent = create_tickets_agent()
+    finops_agent = create_finops_agent()
+    oxygen_agent = create_oxygen_agent()
+
+    return LlmAgent(
+        name="JarvisOrchestrator",
+        model="gemini-2.5-flash",
+        description="Jarvis AI Assistant",
+        sub_agents=[tickets_agent, finops_agent, oxygen_agent]
+    )
+
+
+# Create agents ONCE at module level (not per-request!)
+root_agent = create_root_agent()
+
+
+# ============================================================================
+# Step 4: Configure App with Callbacks
+# ============================================================================
+from google.adk.apps import App
+from google.adk.sessions.in_memory_session_service import InMemorySessionService
+
+adk_app = App(
+    name="jarvis",
+    root_agent=root_agent,  # Single agent instance
+    session_service=InMemorySessionService(),
+    before_tool_callback=before_tool_callback  # Centralized auth
+)
+
+
+# ============================================================================
+# Step 5: Web UI Request Handler (Store Token in State)
+# ============================================================================
+from fastapi import FastAPI, Header
+
+web_app = FastAPI()
+
+@web_app.post("/api/chat")
+async def chat(
+    message: str,
+    authorization: str = Header(None)
+):
+    """Chat endpoint with ADK-compliant authentication."""
+
+    # Layer 1: Extract bearer token from HTTP header (MCP requirement)
+    bearer_token = None
+    if authorization and authorization.startswith("Bearer "):
+        bearer_token = authorization.split(" ")[1]
+
+    # Validate token and extract user
+    user_id = "anonymous"
+    if bearer_token:
+        payload = verify_jwt_token(bearer_token)
+        if payload:
+            user_id = payload.get("user_id", "anonymous")
+
+    session_id = f"web-{user_id}"
+
+    # Get or create session
+    session = adk_app.session_service.get_or_create_session_sync(
+        app_name="jarvis",
+        user_id=user_id,
+        session_id=session_id
+    )
+
+    # Layer 2: Store bearer token in ADK session state
+    if bearer_token:
+        session.state["user:bearer_token"] = bearer_token
+        if payload:
+            session.state["user:username"] = payload.get("username")
+            session.state["user:user_id"] = payload.get("user_id")
+
+    adk_app.session_service.update_session_sync(session)
+
+    # Run agent (token flows through state, NOT agent creation!)
+    response = adk_app.run_sync(
+        user_id=user_id,
+        session_id=session_id,
+        message=message
+    )
+
+    return {"response": response}
+```
+
+### Why This Works (Two-Layer Pattern)
+
+1. **MCP Compliant:** Bearer token in Authorization header (HTTP layer) ✅
+2. **ADK Compliant:** Token stored in session state (ADK layer) ✅
+3. **Thread Safe:** State is session-scoped, not shared ✅
+4. **Secure:** Proper isolation, tokens not in LLM prompts ✅
+5. **Scalable:** Works for multi-tenant, OAuth, MCP ✅
+6. **Performant:** No per-request agent creation (<1ms vs 25ms) ✅
+7. **OAuth Ready:** State pattern works with OAuth tokens ✅
+
+### Key Insight: Why McpToolset Doesn't Need Headers
+
+```python
+# WRONG (Phase 2A - Non-ADK-compliant):
+toolset = McpToolset(
+    connection_params=SseConnectionParams(
+        url="http://localhost:5011/mcp",
+        headers={"Authorization": f"Bearer {bearer_token}"}  # ❌ DON'T DO THIS
+    )
+)
+
+# CORRECT (Phase 2B - ADK-compliant):
+toolset = McpToolset(
+    connection_params=SseConnectionParams(
+        url="http://localhost:5011/mcp"
+        # NO headers - authentication flows through ADK state!
+    )
+)
+
+# Why? Because authentication happens at a different layer:
+# 1. HTTP request → Extract token
+# 2. Store in session.state["user:bearer_token"]
+# 3. MCP tools access via tool_context.state.get("user:bearer_token")
+# 4. McpToolset is just the transport mechanism
+```
 
 ---
 
