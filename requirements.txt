@@ -7,8 +7,16 @@ fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 pydantic>=2.0.0
 
-# Toolbox integration
+# Toolbox integration (Phase 1 - existing)
 toolbox-core>=0.1.0
+
+# Phase 2: MCP Protocol Support
+fastmcp>=0.1.0
+mcp>=0.1.0
+
+# Phase 2: JWT Authentication
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
 
 # Environment management
 python-dotenv>=1.0.0
