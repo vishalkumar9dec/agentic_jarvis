@@ -1,15 +1,7 @@
 #!/bin/bash
-# Start Oxygen A2A Agent on port 8002
+# Start Oxygen A2A Agent (Port 8002)
 
-echo "Starting Oxygen A2A Agent on port 8002..."
-
-# Check if port is already in use
-if lsof -ti:8002 > /dev/null 2>&1; then
-    echo "⚠ Port 8002 is already in use. Cleaning up existing processes..."
-    lsof -ti:8002 | xargs kill -9 2>/dev/null
-    sleep 1
-    echo "✓ Port 8002 cleaned"
-fi
+echo "Starting Oxygen A2A Agent..."
 
 # Get the project root directory (parent of scripts/)
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,37 +9,33 @@ cd "$PROJECT_ROOT"
 
 # Check if virtual environment exists
 if [ ! -d ".venv" ]; then
-    echo "❌ Error: Virtual environment not found at .venv/"
-    echo "Please create a virtual environment first: python -m venv .venv"
+    echo "Error: Virtual environment not found. Run 'python -m venv .venv' first."
     exit 1
 fi
 
-# Check if .env file exists for Oxygen agent
-if [ ! -f "remote_agent/oxygen_agent/.env" ]; then
-    echo "⚠ Warning: .env file not found for Oxygen agent"
-    echo "Creating .env from template..."
+# Kill existing process on port 8002
+echo "Checking for existing processes on port 8002..."
+lsof -ti:8002 | xargs kill -9 2>/dev/null
+sleep 1
 
-    if [ -f "remote_agent/oxygen_agent/.env.template" ]; then
-        cp remote_agent/oxygen_agent/.env.template remote_agent/oxygen_agent/.env
-        echo "✓ Created remote_agent/oxygen_agent/.env from template"
-        echo ""
-        echo "⚠ IMPORTANT: Please edit remote_agent/oxygen_agent/.env and add your GOOGLE_API_KEY"
-        echo "Press Enter to continue or Ctrl+C to exit and configure .env first..."
-        read
-    else
-        echo "❌ Error: Template file not found at remote_agent/oxygen_agent/.env.template"
-        exit 1
-    fi
-fi
+# Create logs directory if it doesn't exist
+mkdir -p logs
 
-# Check if agent file exists
-if [ ! -f "remote_agent/oxygen_agent/agent.py" ]; then
-    echo "❌ Error: Agent file not found at remote_agent/oxygen_agent/agent.py"
+# Start oxygen agent
+echo "Starting oxygen agent on port 8002..."
+.venv/bin/python -m uvicorn remote_agent.oxygen_agent.agent:a2a_app --host localhost --port 8002 > logs/oxygen_agent.log 2>&1 &
+
+# Wait a moment for service to start
+sleep 2
+
+# Check if service is running
+if lsof -i:8002 > /dev/null 2>&1; then
+    echo "✓ Oxygen Agent started successfully on port 8002"
+    echo "  Logs: logs/oxygen_agent.log"
+    echo "  URL: http://localhost:8002"
+    echo "  Agent Card: http://localhost:8002/.well-known/agent-card.json"
+else
+    echo "✗ Failed to start Oxygen Agent"
+    echo "  Check logs/oxygen_agent.log for errors"
     exit 1
 fi
-
-# Start the agent
-echo "Starting Oxygen A2A agent..."
-.venv/bin/python -m uvicorn remote_agent.oxygen_agent.agent:a2a_app --host localhost --port 8002
-
-# Note: The agent runs in foreground. Use Ctrl+C to stop.

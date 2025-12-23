@@ -12,7 +12,11 @@ from .tools import (
     get_user_courses,
     get_pending_exams,
     get_user_preferences,
-    get_learning_summary
+    get_learning_summary,
+    get_my_courses,
+    get_my_exams,
+    get_my_preferences,
+    get_my_learning_summary
 )
 
 # Load environment variables from oxygen agent's .env file
@@ -67,10 +71,16 @@ When discussing progress:
 - Highlight achievements (completed courses)
 - Encourage continued learning""",
     tools=[
+        # Original tools (require username parameter)
         get_user_courses,
         get_pending_exams,
         get_user_preferences,
-        get_learning_summary
+        get_learning_summary,
+        # User-specific tools (use current_user from auth)
+        get_my_courses,
+        get_my_exams,
+        get_my_preferences,
+        get_my_learning_summary
     ],
 )
 

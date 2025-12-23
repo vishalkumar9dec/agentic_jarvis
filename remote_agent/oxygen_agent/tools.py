@@ -5,6 +5,12 @@ Provides learning and development functions for the Oxygen agent.
 
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+import sys
+import os
+
+# Add parent directory to path to import auth modules
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from auth.jwt_utils import verify_jwt_token
 
 # In-memory learning database
 LEARNING_DB = {
@@ -225,3 +231,79 @@ def get_learning_summary(username: str) -> Dict[str, Any]:
             }
         }
     }
+
+
+# ============================================================================
+# Authenticated Tool Functions (User-Specific)
+# ============================================================================
+
+def get_my_courses(current_user: str) -> Dict[str, Any]:
+    """Get courses for the authenticated user.
+
+    Args:
+        current_user: The authenticated username (from JWT token)
+
+    Returns:
+        Dictionary with enrolled and completed courses for the current user
+    """
+    if not current_user:
+        return {
+            "success": False,
+            "error": "Authentication required to access your courses"
+        }
+
+    return get_user_courses(current_user)
+
+
+def get_my_exams(current_user: str) -> Dict[str, Any]:
+    """Get pending exams for the authenticated user.
+
+    Args:
+        current_user: The authenticated username (from JWT token)
+
+    Returns:
+        Dictionary with pending exams and deadlines for the current user
+    """
+    if not current_user:
+        return {
+            "success": False,
+            "error": "Authentication required to access your exams"
+        }
+
+    return get_pending_exams(current_user)
+
+
+def get_my_preferences(current_user: str) -> Dict[str, Any]:
+    """Get learning preferences for the authenticated user.
+
+    Args:
+        current_user: The authenticated username (from JWT token)
+
+    Returns:
+        Dictionary with learning preferences for the current user
+    """
+    if not current_user:
+        return {
+            "success": False,
+            "error": "Authentication required to access your preferences"
+        }
+
+    return get_user_preferences(current_user)
+
+
+def get_my_learning_summary(current_user: str) -> Dict[str, Any]:
+    """Get complete learning summary for the authenticated user.
+
+    Args:
+        current_user: The authenticated username (from JWT token)
+
+    Returns:
+        Complete learning journey summary for the current user
+    """
+    if not current_user:
+        return {
+            "success": False,
+            "error": "Authentication required to access your learning summary"
+        }
+
+    return get_learning_summary(current_user)

@@ -5,12 +5,17 @@ Manages IT operations tickets using the tickets toolbox server.
 
 from google.adk.agents import LlmAgent
 from toolbox_core import ToolboxSyncClient
+from jarvis_agent.auth_context import get_authorization_header
 
 # Model configuration
 GEMINI_2_5_FLASH = "gemini-2.5-flash"
 
-# Connect to tickets toolbox server
-toolbox = ToolboxSyncClient("http://localhost:5001")
+# Connect to tickets toolbox server with dynamic authorization header
+# The header callable will read the bearer token from the current context
+toolbox = ToolboxSyncClient(
+    "http://localhost:5001",
+    client_headers={"Authorization": get_authorization_header}
+)
 tools = toolbox.load_toolset('tickets_toolset')
 
 # Create the Tickets agent
