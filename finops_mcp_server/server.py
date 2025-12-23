@@ -4,15 +4,23 @@ Uses FastMCP library for Model Context Protocol.
 
 Port: 5012 (NEW - parallel to existing 5002)
 Protocol: MCP (Model Context Protocol)
-Phase: 2A - No authentication (basic MCP functionality)
+Phase: 2B - With authentication for user-specific features
 
 This server provides cloud financial operations and cost analytics tools via MCP.
-Authentication infrastructure will be added in Task 11 (Phase 2B with ADK compliance).
+Public tools for organization-wide costs, authenticated tools for user budgets.
 """
 
 from fastmcp import FastMCP
+from fastmcp.server.dependencies import get_http_headers
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
+import sys
+import os
+
+# Add project root to Python path for auth imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from auth.jwt_utils import verify_jwt_token
 
 # =============================================================================
 # In-Memory Cloud Cost Database (Mock Data - Same as Phase 1)
@@ -42,6 +50,43 @@ FINOPS_DB: Dict[str, Dict[str, Any]] = {
             {"name": "storage", "cost": 100},
             {"name": "AI Studio", "cost": 200}
         ]
+    }
+}
+
+# User-specific budget allocations (for authenticated features)
+USER_BUDGETS_DB: Dict[str, Dict[str, Any]] = {
+    "vishal": {
+        "monthly_budget": 500,
+        "current_spend": 350,
+        "departments": ["engineering", "ai_research"],
+        "allocated_costs": {
+            "aws": 100,
+            "gcp": 150,
+            "azure": 100
+        },
+        "alerts_enabled": True
+    },
+    "alex": {
+        "monthly_budget": 300,
+        "current_spend": 200,
+        "departments": ["devops", "infrastructure"],
+        "allocated_costs": {
+            "aws": 50,
+            "gcp": 100,
+            "azure": 50
+        },
+        "alerts_enabled": True
+    },
+    "sarah": {
+        "monthly_budget": 400,
+        "current_spend": 380,
+        "departments": ["data_science", "ml"],
+        "allocated_costs": {
+            "aws": 80,
+            "gcp": 200,
+            "azure": 100
+        },
+        "alerts_enabled": False
     }
 }
 
@@ -282,15 +327,253 @@ def get_cost_breakdown() -> Dict[str, Any]:
 
 
 # =============================================================================
-# AUTHENTICATED TOOLS (Will be added in Task 11 - if needed)
+# AUTHENTICATED TOOLS (Task 12 - User-Specific Budget Management)
 # =============================================================================
-# FinOps costs are organization-wide, so authentication is optional.
-# However, infrastructure will be ready in Task 11 for:
-# - User-specific cost allocation
-# - Department/team cost filtering
-# - Budget alerts per user
-#
-# These would use ADK's ToolContext pattern:
-#   bearer_token = tool_context.state.get("user:bearer_token")
-#
-# This is the CORRECT ADK-compliant pattern (not bearer_token as parameter).
+# These tools use HTTP Authorization headers for authentication.
+# Authentication is validated using JWT tokens.
+
+
+@mcp.tool()
+def get_my_budget() -> Dict[str, Any]:
+    """Get budget allocation and spending for the authenticated user.
+
+    This tool requires authentication via HTTP Authorization header.
+    Returns the user's budget information, current spend, and budget utilization.
+
+    Authentication Flow:
+    1. CLI sets bearer token in context: set_bearer_token(token)
+    2. McpToolset's header_provider injects: Authorization: Bearer <token>
+    3. FastMCP receives HTTP request with Authorization header
+    4. This tool extracts token using get_http_headers()
+    5. Token is validated and user's budget data is returned
+
+    Returns:
+        Dict[str, Any]: Budget information with fields:
+            - success (bool): Whether operation succeeded
+            - username (str): Authenticated user's username
+            - budget (Dict): Budget details:
+                - monthly_budget (float): Monthly budget allocation
+                - current_spend (float): Current month's spending
+                - remaining (float): Budget remaining
+                - utilization_percentage (float): % of budget used
+                - status (str): "within_budget", "near_limit", or "over_budget"
+                - departments (List[str]): User's departments
+                - allocated_costs (Dict): Cost breakdown by provider
+                - alerts_enabled (bool): Budget alert status
+
+        Returns error dict if authentication fails.
+
+    Example (when authenticated as vishal):
+        >>> # HTTP Request includes: Authorization: Bearer <valid_jwt>
+        >>> result = get_my_budget()
+        >>> result['budget']['monthly_budget']
+        500
+        >>> result['budget']['utilization_percentage']
+        70.0
+    """
+    # Extract bearer token from HTTP Authorization header
+    headers = get_http_headers()
+    auth_header = headers.get("authorization", "")
+
+    if not auth_header:
+        return {
+            "success": False,
+            "error": "Authentication required",
+            "status": 401,
+            "message": "Please log in to access your budget information"
+        }
+
+    # Extract token from "Bearer <token>" format
+    if not auth_header.startswith("Bearer "):
+        return {
+            "success": False,
+            "error": "Invalid authorization header format",
+            "status": 401,
+            "message": "Authorization header must use Bearer scheme"
+        }
+
+    bearer_token = auth_header[7:]  # Remove "Bearer " prefix
+
+    # Validate token
+    payload = verify_jwt_token(bearer_token)
+    if not payload:
+        return {
+            "success": False,
+            "error": "Invalid or expired token",
+            "status": 401,
+            "message": "Your session has expired. Please log in again."
+        }
+
+    current_user = payload.get("username")
+    if not current_user:
+        return {
+            "success": False,
+            "error": "Token missing username claim",
+            "status": 401
+        }
+
+    # Get user's budget data
+    username_lower = current_user.lower()
+    if username_lower not in USER_BUDGETS_DB:
+        return {
+            "success": False,
+            "error": f"No budget allocation found for user '{current_user}'",
+            "status": 404,
+            "message": "Contact your FinOps administrator to set up your budget"
+        }
+
+    user_budget = USER_BUDGETS_DB[username_lower]
+
+    # Calculate budget metrics
+    monthly_budget = user_budget["monthly_budget"]
+    current_spend = user_budget["current_spend"]
+    remaining = monthly_budget - current_spend
+    utilization = round((current_spend / monthly_budget * 100), 2) if monthly_budget > 0 else 0
+
+    # Determine budget status
+    if utilization >= 100:
+        status = "over_budget"
+    elif utilization >= 80:
+        status = "near_limit"
+    else:
+        status = "within_budget"
+
+    return {
+        "success": True,
+        "username": username_lower,
+        "budget": {
+            "monthly_budget": monthly_budget,
+            "current_spend": current_spend,
+            "remaining": remaining,
+            "utilization_percentage": utilization,
+            "status": status,
+            "departments": user_budget["departments"],
+            "allocated_costs": user_budget["allocated_costs"],
+            "alerts_enabled": user_budget["alerts_enabled"]
+        }
+    }
+
+
+@mcp.tool()
+def get_my_cost_allocation() -> Dict[str, Any]:
+    """Get detailed cost allocation breakdown for the authenticated user.
+
+    This tool requires authentication via HTTP Authorization header.
+    Returns the user's allocated costs across cloud providers with detailed analytics.
+
+    Returns:
+        Dict[str, Any]: Cost allocation details with fields:
+            - success (bool): Whether operation succeeded
+            - username (str): Authenticated user's username
+            - total_allocated (float): Total costs allocated to user
+            - allocation_by_provider (List[Dict]): Provider breakdown (sorted by cost):
+                - provider (str): Cloud provider name
+                - allocated_cost (float): Cost allocated to user
+                - percentage_of_user_total (float): % of user's total allocation
+            - departments (List[str]): User's departments
+            - budget_comparison (Dict): Comparison with budget:
+                - allocated_vs_budget (float): Difference from budget
+                - budget_status (str): Status indicator
+
+        Returns error dict if authentication fails.
+
+    Example (when authenticated as alex):
+        >>> result = get_my_cost_allocation()
+        >>> result['total_allocated']
+        200
+        >>> len(result['allocation_by_provider'])
+        3
+    """
+    # Extract bearer token from HTTP Authorization header
+    headers = get_http_headers()
+    auth_header = headers.get("authorization", "")
+
+    if not auth_header:
+        return {
+            "success": False,
+            "error": "Authentication required",
+            "status": 401,
+            "message": "Please log in to access your cost allocation"
+        }
+
+    if not auth_header.startswith("Bearer "):
+        return {
+            "success": False,
+            "error": "Invalid authorization header format",
+            "status": 401,
+            "message": "Authorization header must use Bearer scheme"
+        }
+
+    bearer_token = auth_header[7:]
+
+    # Validate token
+    payload = verify_jwt_token(bearer_token)
+    if not payload:
+        return {
+            "success": False,
+            "error": "Invalid or expired token",
+            "status": 401,
+            "message": "Your session has expired. Please log in again."
+        }
+
+    current_user = payload.get("username")
+    if not current_user:
+        return {
+            "success": False,
+            "error": "Token missing username claim",
+            "status": 401
+        }
+
+    # Get user's budget data
+    username_lower = current_user.lower()
+    if username_lower not in USER_BUDGETS_DB:
+        return {
+            "success": False,
+            "error": f"No cost allocation found for user '{current_user}'",
+            "status": 404
+        }
+
+    user_budget = USER_BUDGETS_DB[username_lower]
+    allocated_costs = user_budget["allocated_costs"]
+
+    # Calculate total allocated
+    total_allocated = sum(allocated_costs.values())
+
+    # Build provider breakdown
+    allocation_breakdown = []
+    for provider, cost in allocated_costs.items():
+        percentage = round((cost / total_allocated * 100), 2) if total_allocated > 0 else 0
+        allocation_breakdown.append({
+            "provider": provider,
+            "allocated_cost": cost,
+            "percentage_of_user_total": percentage
+        })
+
+    # Sort by cost (descending)
+    allocation_breakdown.sort(key=lambda x: x["allocated_cost"], reverse=True)
+
+    # Budget comparison
+    monthly_budget = user_budget["monthly_budget"]
+    current_spend = user_budget["current_spend"]
+    allocated_vs_budget = current_spend - monthly_budget
+
+    if allocated_vs_budget > 0:
+        budget_status = f"Over budget by ${allocated_vs_budget}"
+    elif allocated_vs_budget == 0:
+        budget_status = "Exactly at budget limit"
+    else:
+        budget_status = f"Within budget (${abs(allocated_vs_budget)} remaining)"
+
+    return {
+        "success": True,
+        "username": username_lower,
+        "total_allocated": total_allocated,
+        "allocation_by_provider": allocation_breakdown,
+        "departments": user_budget["departments"],
+        "budget_comparison": {
+            "monthly_budget": monthly_budget,
+            "current_spend": current_spend,
+            "allocated_vs_budget": allocated_vs_budget,
+            "budget_status": budget_status
+        }
+    }

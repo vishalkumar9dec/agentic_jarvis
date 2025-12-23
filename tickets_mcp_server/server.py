@@ -11,8 +11,19 @@ Authentication will be added in Task 10 (Phase 2B with ADK compliance).
 """
 
 from fastmcp import FastMCP
+
+
+
+from fastmcp.server.dependencies import get_http_headers
 from typing import List, Dict, Optional
 from datetime import datetime, timezone
+import sys
+import os
+
+# Add project root to Python path for auth imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from auth.jwt_utils import verify_jwt_token
 
 # =============================================================================
 # In-Memory Ticket Database (Mock Data - Same as Phase 1)
@@ -123,36 +134,98 @@ def get_ticket(ticket_id: int) -> Optional[Dict]:
 
 @mcp.tool()
 def get_user_tickets(username: str) -> List[Dict]:
-    """Get all tickets for a specific user.
+    """Get all tickets for a specific user (Admin only).
 
-    This is a public tool that accepts a username parameter.
-    Useful for admins or when username is known.
+    This tool requires admin authorization. Regular users should use get_my_tickets() instead.
+    Only admins can view other users' tickets.
+
+    Authorization:
+    - If no auth header: Returns public error (use get_all_tickets instead)
+    - If auth header present:
+      - Admin role: Can view any user's tickets
+      - Non-admin role: Can only view their own tickets (redirected to get_my_tickets)
 
     Args:
         username (str): The username to filter tickets by
 
     Returns:
-        List[Dict]: List of tickets belonging to the specified user.
-            Empty list if user has no tickets.
+        List[Dict]: List of tickets belonging to the specified user (if authorized).
+            Returns error dict if not authorized.
 
-    Example:
-        >>> tickets = get_user_tickets("vishal")
-        >>> len(tickets)
-        2
-        >>> all(t['user'] == 'vishal' for t in tickets)
+    Example (as admin):
+        >>> # HTTP Request includes: Authorization: Bearer <admin_jwt>
+        >>> tickets = get_user_tickets("alex")
+        >>> all(t['user'] == 'alex' for t in tickets)
         True
     """
-    # Case-insensitive username matching
+    # Extract bearer token from HTTP Authorization header
+    headers = get_http_headers()
+    auth_header = headers.get("authorization", "")
+
+    # If no auth header, suggest using public endpoints
+    if not auth_header:
+        return {
+            "error": "Authorization recommended",
+            "status": 403,
+            "message": "To view specific user tickets, please authenticate. Use get_all_tickets() for public access.",
+            "suggestion": "Use 'show all tickets' or 'show my tickets' after logging in"
+        }
+
+    # Extract and validate token
+    if not auth_header.startswith("Bearer "):
+        return {
+            "error": "Invalid authorization header format",
+            "status": 401,
+            "message": "Authorization header must use Bearer scheme"
+        }
+
+    bearer_token = auth_header[7:]  # Remove "Bearer " prefix
+
+    # Validate token
+    payload = verify_jwt_token(bearer_token)
+    if not payload:
+        return {
+            "error": "Invalid or expired token",
+            "status": 401,
+            "message": "Your session has expired. Please log in again."
+        }
+
+    current_user = payload.get("username")
+    user_role = payload.get("role", "")
+
+    if not current_user:
+        return {
+            "error": "Token missing username claim",
+            "status": 401
+        }
+
+    # Authorization check: Only admins can view other users' tickets
+    if user_role != "admin" and current_user.lower() != username.lower():
+        return {
+            "error": "Access denied",
+            "status": 403,
+            "message": f"You can only view your own tickets. Use 'show my tickets' instead.",
+            "your_username": current_user,
+            "requested_username": username
+        }
+
+    # Admin or viewing own tickets - allow access
     username_lower = username.lower()
     return [t for t in TICKETS_DB if t['user'].lower() == username_lower]
 
 
 @mcp.tool()
 def create_ticket(operation: str, user: str) -> Dict:
-    """Create a new IT operations ticket.
+    """Create a new IT operations ticket for a specific user (Admin only).
 
-    This is a public tool that accepts both operation and user as parameters.
-    Useful for admin ticket creation or when creating tickets for others.
+    This tool requires admin authorization. Regular users should use create_my_ticket() instead.
+    Only admins can create tickets for other users.
+
+    Authorization:
+    - If no auth header: Returns error (authentication required)
+    - If auth header present:
+      - Admin role: Can create tickets for any user
+      - Non-admin role: Can only create tickets for themselves (use create_my_ticket)
 
     Args:
         operation (str): The operation type (e.g., create_ai_key, vpn_access)
@@ -164,13 +237,67 @@ def create_ticket(operation: str, user: str) -> Dict:
             - ticket (Dict): The created ticket with all fields
             - message (str): Success message with ticket ID
 
-    Example:
+        Returns error dict if not authorized.
+
+    Example (as admin):
+        >>> # HTTP Request includes: Authorization: Bearer <admin_jwt>
         >>> result = create_ticket("create_ai_key", "vishal")
         >>> result['success']
         True
-        >>> result['ticket']['status']
-        'pending'
     """
+    # Extract bearer token from HTTP Authorization header
+    headers = get_http_headers()
+    auth_header = headers.get("authorization", "")
+
+    # Require authentication for ticket creation
+    if not auth_header:
+        return {
+            "error": "Authentication required",
+            "status": 401,
+            "message": "Please log in to create tickets. Use create_my_ticket() for your own tickets.",
+            "suggestion": "Login and use 'create a ticket for <operation>'"
+        }
+
+    # Extract and validate token
+    if not auth_header.startswith("Bearer "):
+        return {
+            "error": "Invalid authorization header format",
+            "status": 401,
+            "message": "Authorization header must use Bearer scheme"
+        }
+
+    bearer_token = auth_header[7:]  # Remove "Bearer " prefix
+
+    # Validate token
+    payload = verify_jwt_token(bearer_token)
+    if not payload:
+        return {
+            "error": "Invalid or expired token",
+            "status": 401,
+            "message": "Your session has expired. Please log in again."
+        }
+
+    current_user = payload.get("username")
+    user_role = payload.get("role", "")
+
+    if not current_user:
+        return {
+            "error": "Token missing username claim",
+            "status": 401
+        }
+
+    # Authorization check: Only admins can create tickets for other users
+    if user_role != "admin" and current_user.lower() != user.lower():
+        return {
+            "error": "Access denied",
+            "status": 403,
+            "message": f"You can only create tickets for yourself. Use 'create a ticket for <operation>' instead.",
+            "your_username": current_user,
+            "requested_for": user,
+            "suggestion": "Use create_my_ticket() or just say 'create a ticket for <operation>'"
+        }
+
+    # Admin or creating for self - allow ticket creation
     # Generate new ticket ID
     new_id = max([t['id'] for t in TICKETS_DB]) + 1 if TICKETS_DB else 1
 
@@ -198,13 +325,183 @@ def create_ticket(operation: str, user: str) -> Dict:
 
 
 # =============================================================================
-# AUTHENTICATED TOOLS (Will be added in Task 10)
+# AUTHENTICATED TOOLS (Task 12 - ADK ToolContext Pattern)
 # =============================================================================
-# The following authenticated tools will be added in Task 10:
-# - get_my_tickets(tool_context: ToolContext) -> List[Dict]
-# - create_my_ticket(operation: str, tool_context: ToolContext) -> Dict
-#
-# These will use ADK's ToolContext pattern to access authentication state:
-#   bearer_token = tool_context.state.get("user:bearer_token")
-#
-# This is the CORRECT ADK-compliant pattern (not bearer_token as parameter).
+# These tools use ADK's ToolContext to access authentication state.
+# Authentication is validated centrally by before_tool_callback in callbacks.py
+
+
+@mcp.tool()
+def get_my_tickets() -> List[Dict]:
+    """Get tickets for the authenticated user.
+
+    This tool requires authentication via HTTP Authorization header.
+    Returns only tickets that belong to the currently authenticated user.
+
+    Authentication Flow (Task 13):
+    1. CLI sets bearer token in context: set_bearer_token(token)
+    2. McpToolset's header_provider injects: Authorization: Bearer <token>
+    3. FastMCP receives HTTP request with Authorization header
+    4. This tool extracts token using get_http_headers()
+    5. Token is validated and user identity is determined
+
+    Returns:
+        List[Dict]: List of tickets belonging to the authenticated user.
+            Returns error dict if authentication fails.
+
+    Example (when authenticated as vishal):
+        >>> # HTTP Request includes: Authorization: Bearer <valid_jwt>
+        >>> tickets = get_my_tickets()
+        >>> all(t['user'] == 'vishal' for t in tickets)
+        True
+
+    Error Response:
+        {
+            "error": "Authentication required",
+            "status": 401,
+            "message": "Please log in to access your tickets"
+        }
+    """
+    # Extract bearer token from HTTP Authorization header
+    headers = get_http_headers()
+    auth_header = headers.get("authorization", "")
+
+    if not auth_header:
+        return {
+            "error": "Authentication required",
+            "status": 401,
+            "message": "Please log in to access your tickets"
+        }
+
+    # Extract token from "Bearer <token>" format
+    if not auth_header.startswith("Bearer "):
+        return {
+            "error": "Invalid authorization header format",
+            "status": 401,
+            "message": "Authorization header must use Bearer scheme"
+        }
+
+    bearer_token = auth_header[7:]  # Remove "Bearer " prefix
+
+    # Validate token
+    payload = verify_jwt_token(bearer_token)
+    if not payload:
+        return {
+            "error": "Invalid or expired token",
+            "status": 401,
+            "message": "Your session has expired. Please log in again."
+        }
+
+    current_user = payload.get("username")
+    if not current_user:
+        return {
+            "error": "Token missing username claim",
+            "status": 401
+        }
+
+    # Return user-specific tickets
+    username_lower = current_user.lower()
+    return [t for t in TICKETS_DB if t['user'].lower() == username_lower]
+
+
+@mcp.tool()
+def create_my_ticket(operation: str) -> Dict:
+    """Create a new ticket for the authenticated user.
+
+    This tool requires authentication via HTTP Authorization header.
+    The ticket will be created for the currently authenticated user.
+
+    Authentication Flow (Task 13):
+    1. CLI sets bearer token in context: set_bearer_token(token)
+    2. McpToolset's header_provider injects: Authorization: Bearer <token>
+    3. FastMCP receives HTTP request with Authorization header
+    4. This tool extracts token using get_http_headers()
+    5. Token is validated and ticket created for authenticated user
+
+    Args:
+        operation (str): The operation type (e.g., create_ai_key, vpn_access)
+
+    Returns:
+        Dict: Response containing:
+            - success (bool): Whether ticket creation succeeded
+            - ticket (Dict): The created ticket with all fields
+            - message (str): Success message with ticket ID
+
+        Returns error dict if authentication fails.
+
+    Example (when authenticated as vishal):
+        >>> # HTTP Request includes: Authorization: Bearer <valid_jwt>
+        >>> result = create_my_ticket("create_ai_key")
+        >>> result['success']
+        True
+        >>> result['ticket']['user']
+        'vishal'
+
+    Error Response:
+        {
+            "error": "Authentication required",
+            "status": 401,
+            "message": "Please log in to create tickets"
+        }
+    """
+    # Extract bearer token from HTTP Authorization header
+    headers = get_http_headers()
+    auth_header = headers.get("authorization", "")
+
+    if not auth_header:
+        return {
+            "error": "Authentication required",
+            "status": 401,
+            "message": "Please log in to create tickets"
+        }
+
+    # Extract token from "Bearer <token>" format
+    if not auth_header.startswith("Bearer "):
+        return {
+            "error": "Invalid authorization header format",
+            "status": 401,
+            "message": "Authorization header must use Bearer scheme"
+        }
+
+    bearer_token = auth_header[7:]  # Remove "Bearer " prefix
+
+    # Validate token
+    payload = verify_jwt_token(bearer_token)
+    if not payload:
+        return {
+            "error": "Invalid or expired token",
+            "status": 401,
+            "message": "Your session has expired. Please log in again."
+        }
+
+    current_user = payload.get("username")
+    if not current_user:
+        return {
+            "error": "Token missing username claim",
+            "status": 401
+        }
+
+    # Generate new ticket ID
+    new_id = max([t['id'] for t in TICKETS_DB]) + 1 if TICKETS_DB else 1
+
+    # Get current timestamp in ISO 8601 format
+    now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+    # Create new ticket for authenticated user
+    new_ticket = {
+        "id": new_id,
+        "operation": operation,
+        "user": current_user,  # Use authenticated user from JWT token
+        "status": "pending",
+        "created_at": now,
+        "updated_at": now
+    }
+
+    # Add to database
+    TICKETS_DB.append(new_ticket)
+
+    return {
+        "success": True,
+        "ticket": new_ticket,
+        "message": f"Ticket {new_id} created successfully for {current_user}"
+    }

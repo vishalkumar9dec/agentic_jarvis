@@ -4,15 +4,23 @@ Uses FastMCP library for Model Context Protocol.
 
 Port: 8012 (NEW - parallel to existing 8002 A2A)
 Protocol: MCP (Model Context Protocol)
-Phase: 2A - No authentication (basic MCP functionality)
+Phase: 2B - With authentication for user-specific features
 
 This server provides learning and development platform tools via MCP.
-Authentication will be added in Task 11 (Phase 2B with ADK compliance).
+Public tools for viewing any user, authenticated tools for personal data.
 """
 
 from fastmcp import FastMCP
+from fastmcp.server.dependencies import get_http_headers
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+import sys
+import os
+
+# Add project root to Python path for auth imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from auth.jwt_utils import verify_jwt_token
 
 # =============================================================================
 # In-Memory Learning Database (Mock Data - Same as Phase 1)
@@ -338,17 +346,428 @@ def get_learning_summary(username: str) -> Dict[str, Any]:
 
 
 # =============================================================================
-# AUTHENTICATED TOOLS (Will be added in Task 11)
+# AUTHENTICATED TOOLS (Task 12 - ADK ToolContext Pattern)
 # =============================================================================
-# The following authenticated tools will be added in Task 11:
-# - get_my_courses(tool_context: ToolContext) -> Dict[str, Any]
-# - get_my_exams(tool_context: ToolContext) -> Dict[str, Any]
-# - get_my_preferences(tool_context: ToolContext) -> Dict[str, Any]
-# - get_my_learning_summary(tool_context: ToolContext) -> Dict[str, Any]
-#
-# These will use ADK's ToolContext pattern to access authentication state:
-#   bearer_token = tool_context.state.get("user:bearer_token")
-#   payload = verify_jwt_token(bearer_token)
-#   current_user = payload.get("username")
-#
-# This is the CORRECT ADK-compliant pattern (not bearer_token as parameter).
+# These tools use ADK's ToolContext to access authentication state.
+# Authentication is validated centrally by before_tool_callback in callbacks.py
+
+
+@mcp.tool()
+def get_my_courses() -> Dict[str, Any]:
+    """Get all courses for the authenticated user.
+
+    This tool requires authentication via HTTP Authorization header.
+    Returns course information for the currently authenticated user.
+
+    Authentication Flow (Task 13):
+    1. CLI sets bearer token in context: set_bearer_token(token)
+    2. McpToolset's header_provider injects: Authorization: Bearer <token>
+    3. FastMCP receives HTTP request with Authorization header
+    4. This tool extracts token using get_http_headers()
+    5. Token is validated and user's course data is returned
+
+    Returns:
+        Dict[str, Any]: Course information for authenticated user.
+            Returns error dict if authentication fails.
+
+    Example (when authenticated as vishal):
+        >>> # HTTP Request includes: Authorization: Bearer <valid_jwt>
+        >>> result = get_my_courses()
+        >>> result['courses_enrolled']
+        ['aws', 'terraform']
+    """
+    # Extract bearer token from HTTP Authorization header
+    headers = get_http_headers()
+    auth_header = headers.get("authorization", "")
+
+    if not auth_header:
+        return {
+            "success": False,
+            "error": "Authentication required",
+            "status": 401,
+            "message": "Please log in to access your courses"
+        }
+
+    # Extract token from "Bearer <token>" format
+    if not auth_header.startswith("Bearer "):
+        return {
+            "success": False,
+            "error": "Invalid authorization header format",
+            "status": 401,
+            "message": "Authorization header must use Bearer scheme"
+        }
+
+    bearer_token = auth_header[7:]  # Remove "Bearer " prefix
+
+    # Validate token
+    payload = verify_jwt_token(bearer_token)
+    if not payload:
+        return {
+            "success": False,
+            "error": "Invalid or expired token",
+            "status": 401,
+            "message": "Your session has expired. Please log in again."
+        }
+
+    current_user = payload.get("username")
+    if not current_user:
+        return {
+            "success": False,
+            "error": "Token missing username claim",
+            "status": 401
+        }
+
+    # Get user's courses
+    username_lower = current_user.lower()
+    if username_lower not in LEARNING_DB:
+        return {
+            "success": False,
+            "error": f"User '{current_user}' not found in the learning system",
+            "status": 404
+        }
+
+    user_data = LEARNING_DB[username_lower]
+
+    return {
+        "success": True,
+        "username": username_lower,
+        "courses_enrolled": user_data["courses_enrolled"],
+        "completed_courses": user_data["completed_courses"],
+        "total_enrolled": len(user_data["courses_enrolled"]),
+        "total_completed": len(user_data["completed_courses"]),
+        "in_progress": len(user_data["courses_enrolled"])
+    }
+
+
+@mcp.tool()
+def get_my_exams() -> Dict[str, Any]:
+    """Get pending exams for the authenticated user.
+
+    This tool requires authentication via HTTP Authorization header.
+    Returns exam information with deadlines for the authenticated user.
+
+    Authentication Flow (Task 13):
+    1. CLI sets bearer token in context: set_bearer_token(token)
+    2. McpToolset's header_provider injects: Authorization: Bearer <token>
+    3. FastMCP receives HTTP request with Authorization header
+    4. This tool extracts token using get_http_headers()
+    5. Token is validated and user's exam data is returned
+
+    Returns:
+        Dict[str, Any]: Exam information for authenticated user.
+            Returns error dict if authentication fails.
+
+    Example (when authenticated as alex):
+        >>> # HTTP Request includes: Authorization: Bearer <valid_jwt>
+        >>> result = get_my_exams()
+        >>> result['total_pending']
+        2
+    """
+    # Extract bearer token from HTTP Authorization header
+    headers = get_http_headers()
+    auth_header = headers.get("authorization", "")
+
+    if not auth_header:
+        return {
+            "success": False,
+            "error": "Authentication required",
+            "status": 401,
+            "message": "Please log in to access your exams"
+        }
+
+    # Extract token from "Bearer <token>" format
+    if not auth_header.startswith("Bearer "):
+        return {
+            "success": False,
+            "error": "Invalid authorization header format",
+            "status": 401,
+            "message": "Authorization header must use Bearer scheme"
+        }
+
+    bearer_token = auth_header[7:]  # Remove "Bearer " prefix
+
+    # Validate token
+    payload = verify_jwt_token(bearer_token)
+    if not payload:
+        return {
+            "success": False,
+            "error": "Invalid or expired token",
+            "status": 401,
+            "message": "Your session has expired. Please log in again."
+        }
+
+    current_user = payload.get("username")
+    if not current_user:
+        return {
+            "success": False,
+            "error": "Token missing username claim",
+            "status": 401
+        }
+
+    # Get user's exams
+    username_lower = current_user.lower()
+    if username_lower not in LEARNING_DB:
+        return {
+            "success": False,
+            "error": f"User '{current_user}' not found in the learning system",
+            "status": 404
+        }
+
+    user_data = LEARNING_DB[username_lower]
+    pending_exams = user_data["pending_exams"]
+    exam_deadlines = user_data["exam_deadlines"]
+
+    # Build exam details with deadline info
+    exams_with_deadlines = []
+    urgent_count = 0
+
+    for exam in pending_exams:
+        deadline = exam_deadlines.get(exam, "No deadline set")
+
+        days_until = None
+        is_urgent = False
+        if deadline != "No deadline set":
+            try:
+                deadline_date = datetime.strptime(deadline, "%Y-%m-%d")
+                today = datetime.now()
+                delta = deadline_date - today
+                days_until = delta.days
+                if days_until <= 7:
+                    is_urgent = True
+                    urgent_count += 1
+            except ValueError:
+                pass
+
+        exams_with_deadlines.append({
+            "exam": exam,
+            "deadline": deadline,
+            "days_until_deadline": days_until,
+            "is_urgent": is_urgent
+        })
+
+    return {
+        "success": True,
+        "username": username_lower,
+        "pending_exams": exams_with_deadlines,
+        "total_pending": len(pending_exams),
+        "urgent_exams": urgent_count
+    }
+
+
+@mcp.tool()
+def get_my_preferences() -> Dict[str, Any]:
+    """Get learning preferences for the authenticated user.
+
+    This tool requires authentication via HTTP Authorization header.
+    Returns learning interests and preferences for the authenticated user.
+
+    Authentication Flow (Task 13):
+    1. CLI sets bearer token in context: set_bearer_token(token)
+    2. McpToolset's header_provider injects: Authorization: Bearer <token>
+    3. FastMCP receives HTTP request with Authorization header
+    4. This tool extracts token using get_http_headers()
+    5. Token is validated and user's preferences are returned
+
+    Returns:
+        Dict[str, Any]: Preferences for authenticated user.
+            Returns error dict if authentication fails.
+
+    Example (when authenticated as vishal):
+        >>> # HTTP Request includes: Authorization: Bearer <valid_jwt>
+        >>> result = get_my_preferences()
+        >>> result['preferences']
+        ['software engineering', 'cloud architecture']
+    """
+    # Extract bearer token from HTTP Authorization header
+    headers = get_http_headers()
+    auth_header = headers.get("authorization", "")
+
+    if not auth_header:
+        return {
+            "success": False,
+            "error": "Authentication required",
+            "status": 401,
+            "message": "Please log in to access your preferences"
+        }
+
+    # Extract token from "Bearer <token>" format
+    if not auth_header.startswith("Bearer "):
+        return {
+            "success": False,
+            "error": "Invalid authorization header format",
+            "status": 401,
+            "message": "Authorization header must use Bearer scheme"
+        }
+
+    bearer_token = auth_header[7:]  # Remove "Bearer " prefix
+
+    # Validate token
+    payload = verify_jwt_token(bearer_token)
+    if not payload:
+        return {
+            "success": False,
+            "error": "Invalid or expired token",
+            "status": 401,
+            "message": "Your session has expired. Please log in again."
+        }
+
+    current_user = payload.get("username")
+    if not current_user:
+        return {
+            "success": False,
+            "error": "Token missing username claim",
+            "status": 401
+        }
+
+    # Get user's preferences
+    username_lower = current_user.lower()
+    if username_lower not in LEARNING_DB:
+        return {
+            "success": False,
+            "error": f"User '{current_user}' not found in the learning system",
+            "status": 404
+        }
+
+    user_data = LEARNING_DB[username_lower]
+
+    return {
+        "success": True,
+        "username": username_lower,
+        "preferences": user_data["preferences"],
+        "total_preferences": len(user_data["preferences"])
+    }
+
+
+@mcp.tool()
+def get_my_learning_summary() -> Dict[str, Any]:
+    """Get complete learning journey summary for the authenticated user.
+
+    This tool requires authentication via HTTP Authorization header.
+    Provides comprehensive overview of the authenticated user's learning progress.
+
+    Authentication Flow (Task 13):
+    1. CLI sets bearer token in context: set_bearer_token(token)
+    2. McpToolset's header_provider injects: Authorization: Bearer <token>
+    3. FastMCP receives HTTP request with Authorization header
+    4. This tool extracts token using get_http_headers()
+    5. Token is validated and user's learning summary is returned
+
+    Returns:
+        Dict[str, Any]: Complete learning summary for authenticated user.
+            Returns error dict if authentication fails.
+
+    Example (when authenticated as alex):
+        >>> # HTTP Request includes: Authorization: Bearer <valid_jwt>
+        >>> result = get_my_learning_summary()
+        >>> result['learning_summary']['overall_progress']['completion_rate']
+        50.0
+    """
+    # Extract bearer token from HTTP Authorization header
+    headers = get_http_headers()
+    auth_header = headers.get("authorization", "")
+
+    if not auth_header:
+        return {
+            "success": False,
+            "error": "Authentication required",
+            "status": 401,
+            "message": "Please log in to access your learning summary"
+        }
+
+    # Extract token from "Bearer <token>" format
+    if not auth_header.startswith("Bearer "):
+        return {
+            "success": False,
+            "error": "Invalid authorization header format",
+            "status": 401,
+            "message": "Authorization header must use Bearer scheme"
+        }
+
+    bearer_token = auth_header[7:]  # Remove "Bearer " prefix
+
+    # Validate token
+    payload = verify_jwt_token(bearer_token)
+    if not payload:
+        return {
+            "success": False,
+            "error": "Invalid or expired token",
+            "status": 401,
+            "message": "Your session has expired. Please log in again."
+        }
+
+    current_user = payload.get("username")
+    if not current_user:
+        return {
+            "success": False,
+            "error": "Token missing username claim",
+            "status": 401
+        }
+
+    # Get user's learning data
+    username_lower = current_user.lower()
+    if username_lower not in LEARNING_DB:
+        return {
+            "success": False,
+            "error": f"User '{current_user}' not found in the learning system",
+            "status": 404
+        }
+
+    user_data = LEARNING_DB[username_lower]
+
+    # Calculate completion rate
+    total_courses = len(user_data["courses_enrolled"]) + len(user_data["completed_courses"])
+    completed_count = len(user_data["completed_courses"])
+    completion_rate = round((completed_count / total_courses * 100), 2) if total_courses > 0 else 0
+
+    # Get exam details with urgency
+    pending_exams = user_data["pending_exams"]
+    exam_deadlines = user_data["exam_deadlines"]
+
+    exams_with_deadlines = []
+    urgent_count = 0
+    for exam in pending_exams:
+        deadline = exam_deadlines.get(exam, "No deadline set")
+
+        days_until = None
+        if deadline != "No deadline set":
+            try:
+                deadline_date = datetime.strptime(deadline, "%Y-%m-%d")
+                today = datetime.now()
+                delta = deadline_date - today
+                days_until = delta.days
+                if days_until <= 7:
+                    urgent_count += 1
+            except ValueError:
+                pass
+
+        exams_with_deadlines.append({
+            "exam": exam,
+            "deadline": deadline,
+            "days_until_deadline": days_until
+        })
+
+    return {
+        "success": True,
+        "username": username_lower,
+        "learning_summary": {
+            "courses": {
+                "enrolled": user_data["courses_enrolled"],
+                "completed": user_data["completed_courses"],
+                "total_enrolled": len(user_data["courses_enrolled"]),
+                "total_completed": completed_count,
+                "completion_rate": f"{completion_rate}%"
+            },
+            "exams": {
+                "pending": exams_with_deadlines,
+                "total_pending": len(pending_exams),
+                "urgent_exams": urgent_count
+            },
+            "preferences": user_data["preferences"],
+            "overall_progress": {
+                "completion_rate": completion_rate,
+                "status": "On Track" if completion_rate >= 50 else "Needs Attention",
+                "active_learning_paths": len(user_data["courses_enrolled"]),
+                "achievements": completed_count
+            }
+        }
+    }

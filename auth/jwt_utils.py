@@ -17,13 +17,14 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
 
-def create_jwt_token(username: str, user_id: str) -> str:
+def create_jwt_token(username: str, user_id: str, role: str = "user") -> str:
     """
     Create JWT token for authenticated user.
 
     Args:
         username: Username of the authenticated user
         user_id: Unique user identifier
+        role: User role (e.g., 'admin', 'user', 'developer', etc.)
 
     Returns:
         JWT token string
@@ -31,6 +32,7 @@ def create_jwt_token(username: str, user_id: str) -> str:
     payload = {
         "username": username,
         "user_id": user_id,
+        "role": role,
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS),
         "iat": datetime.now(timezone.utc)
     }
@@ -79,7 +81,7 @@ if __name__ == "__main__":
     print("Testing JWT utilities...")
 
     # Create token
-    test_token = create_jwt_token("vishal", "user_001")
+    test_token = create_jwt_token("vishal", "user_001", "developer")
     print(f"✓ Token created: {test_token[:50]}...")
 
     # Verify token

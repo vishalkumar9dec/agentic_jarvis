@@ -12,16 +12,19 @@
 
 **DO NOT start with authentication**. The documented order is:
 
-1. **Part A (Tasks 1-8):** Build NEW MCP solution (ports 5011, 5012, 8012, 9990) - WITHOUT authentication
-2. **Part B (Tasks 9-16):** Add ADK-compliant JWT authentication to MCP solution
+1. **Part A (Tasks 1-7) ✅ COMPLETE:** Build NEW MCP solution (ports 5011, 5012, 8012, 9990) - WITHOUT authentication
+2. **Part B (Tasks 9, 12-16):** Add ADK-compliant JWT authentication to MCP solution
 3. **Part C (Tasks 17-20):** Testing, comparison, documentation
 
+**Note:** Task 8 removed (not required). Tasks 10-11 merged into Task 12 (centralized callback pattern).
+
 **✅ ADK-COMPLIANT FROM THE START:**
-All authentication tasks (9-16) use the correct ADK pattern:
+All authentication tasks (9, 12-16) use the correct ADK pattern:
 - **ToolContext** for tool authentication (NOT bearer_token parameters)
 - **Session state** for token storage (`session.state["user:bearer_token"]`)
 - **Callbacks** for centralized auth enforcement (`before_tool_callback`)
 - **App** pattern for agent lifecycle management (agents created ONCE, not per-request)
+- **Centralized validation** in callbacks (not individual tools)
 
 **Why MCP First?**
 - MCP has native OAuth 2.1 support (better than custom toolbox)
@@ -50,13 +53,14 @@ Before starting, ensure:
 
 ---
 
-## Part A: Build MCP Solution (Tasks 1-8) - NO AUTHENTICATION YET
+## Part A: Build MCP Solution (Tasks 1-7) - NO AUTHENTICATION YET ✅ COMPLETE
 
-### **Task 1: Install FastMCP and Update Requirements**
+### **Task 1: Install FastMCP and Update Requirements** ✅ COMPLETE
 
 **Priority:** Critical
 **Dependencies:** None
 **Estimated Time:** 30 minutes
+**Status:** ✅ COMPLETE
 
 **Objective:**
 Install FastMCP library and update project dependencies.
@@ -107,11 +111,12 @@ EOF
 
 ---
 
-### **Task 2: Build Tickets MCP Server (Port 5011)**
+### **Task 2: Build Tickets MCP Server (Port 5011)** ✅ COMPLETE
 
 **Priority:** Critical
 **Dependencies:** Task 1
 **Estimated Time:** 3 hours
+**Status:** ✅ COMPLETE
 
 **Objective:**
 Create Tickets MCP server using FastMCP pattern on port 5011 (parallel to existing 5001).
@@ -356,11 +361,12 @@ curl -X POST http://localhost:5011/mcp/tools/call \
 
 ---
 
-### **Task 3: Build FinOps MCP Server (Port 5012)**
+### **Task 3: Build FinOps MCP Server (Port 5012)** ✅ COMPLETE
 
 **Priority:** Critical
 **Dependencies:** Task 1
 **Estimated Time:** 2.5 hours
+**Status:** ✅ COMPLETE
 
 **Objective:**
 Create FinOps MCP server using same FastMCP pattern on port 5012.
@@ -391,11 +397,12 @@ Follow same pattern as Task 2:
 
 ---
 
-### **Task 4: Build Oxygen MCP Server (Port 8012)**
+### **Task 4: Build Oxygen MCP Server (Port 8012)** ✅ COMPLETE
 
 **Priority:** Critical
 **Dependencies:** Task 1
 **Estimated Time:** 3 hours
+**Status:** ✅ COMPLETE
 
 **Objective:**
 Create Oxygen MCP server on port 8012 (parallel to existing A2A agent on 8002).
@@ -424,11 +431,12 @@ Create Oxygen MCP server on port 8012 (parallel to existing A2A agent on 8002).
 
 ---
 
-### **Task 5: Create MCP Agent Factory Pattern**
+### **Task 5: Create MCP Agent Factory Pattern** ✅ COMPLETE
 
 **Priority:** Critical
 **Dependencies:** Tasks 2, 3, 4
 **Estimated Time:** 4 hours
+**Status:** ✅ COMPLETE
 
 **Objective:**
 Create agent factory functions that use ADK's McpToolset to connect to MCP servers.
@@ -654,11 +662,12 @@ Always provide helpful, clear responses.""",
 
 ---
 
-### **Task 6: Create MCP CLI (main_mcp.py)**
+### **Task 6: Create MCP CLI (main_mcp.py)** ✅ COMPLETE
 
 **Priority:** High
 **Dependencies:** Task 5
 **Estimated Time:** 2 hours
+**Status:** ✅ COMPLETE
 
 **Objective:**
 Create NEW CLI entry point for MCP solution (parallel to existing main.py).
@@ -770,11 +779,12 @@ if __name__ == "__main__":
 
 ---
 
-### **Task 7: Create MCP Web UI (Port 9990)**
+### **Task 7: Create MCP Web UI (Port 9990)** ✅ COMPLETE
 
 **Priority:** High
 **Dependencies:** Task 5
 **Estimated Time:** 3 hours
+**Status:** ✅ COMPLETE
 
 **Objective:**
 Create simple web UI for MCP solution on port 9990 (NO AUTH in Part A).
@@ -1007,13 +1017,17 @@ python web_ui/server_mcp.py
 
 ---
 
-### **Task 8: Create All-In-One Startup Script for MCP**
+### **Task 8: Create All-In-One Startup Script for MCP** ❌ NOT REQUIRED
 
 **Priority:** Medium
 **Dependencies:** Tasks 2-7
 **Estimated Time:** 1 hour
+**Status:** ❌ NOT REQUIRED
 
-**Objective:**
+**Reason for Removal:**
+Individual startup scripts (start_tickets_mcp_server.sh, start_finops_mcp_server.sh, start_oxygen_mcp_server.sh, start_web_mcp.sh) are sufficient for development and testing. An all-in-one script is not required at this stage.
+
+**Objective (Original):**
 Create script to start all MCP services in background.
 
 **Implementation:**
@@ -1113,16 +1127,18 @@ chmod +x scripts/restart_all_mcp.sh
 
 ---
 
-## Part B: Add JWT Authentication (Tasks 9-16)
+## Part B: Add ADK-Compliant JWT Authentication (Tasks 9, 12-16)
 
-### **Task 9: Create JWT Authentication Infrastructure (Shared)**
+**⚠️ IMPORTANT:** Tasks 10 and 11 have been removed and merged into Task 12. The ADK callback pattern provides centralized authentication validation, eliminating the need for individual tool-level authentication. Authenticated tools are added as part of Task 12, which combines callback infrastructure with authenticated tool implementation.
+
+### **Task 9: Verify JWT Authentication Infrastructure (Shared)**
 
 **Priority:** Critical
 **Dependencies:** Part A complete
-**Estimated Time:** 2 hours
+**Estimated Time:** 30 minutes
 
 **Objective:**
-Create shared JWT utilities and user service (used by both solutions).
+Verify that shared JWT utilities and user service exist and are working (already implemented in Phase 1).
 
 **Implementation:**
 
@@ -1159,233 +1175,24 @@ curl -X POST http://localhost:9998/auth/login \
 
 ---
 
-### **Task 10: Add ADK-Compliant Authentication to Tickets MCP Server**
+### **Task 12: Create ADK Callbacks + Add Authenticated Tools** (Merged from Tasks 10-11)
 
 **Priority:** Critical
 **Dependencies:** Task 9
-**Estimated Time:** 2.5 hours
+**Estimated Time:** 5 hours
 
 **Objective:**
-Add JWT validation and authenticated tools using ADK's ToolContext pattern.
+1. Create ADK callbacks module for centralized authentication enforcement
+2. Add authenticated tools to MCP servers using ToolContext pattern
+3. Update agent instructions to include authenticated tools
 
-**✅ ADK-COMPLIANT PATTERN:** This task uses `ToolContext` (NOT `bearer_token` parameter) from the start.
+**✅ ADK-COMPLIANT PATTERN:** Uses callbacks + App pattern + ToolContext (NOT per-request agent creation or bearer_token parameters).
+
+**⚠️ WHY MERGED:** The ADK callback pattern (`before_tool_callback`) provides centralized authentication validation. This eliminates the need for separate tasks to add authentication to individual MCP servers. Authenticated tools are added alongside callback infrastructure to ensure consistency.
 
 **Implementation:**
 
-Update `tickets_mcp_server/server.py`:
-
-```python
-# Add at top
-import sys
-import os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from auth.jwt_utils import verify_jwt_token
-from google.adk.tools import ToolContext
-
-# Add authenticated tools (ADK pattern)
-@mcp.tool()
-def get_my_tickets(tool_context: ToolContext) -> List[Dict]:
-    """Get tickets for the authenticated user.
-
-    This tool requires authentication via ADK session state.
-    Returns tickets that belong to the authenticated user.
-
-    Args:
-        tool_context: Automatically injected by ADK framework
-
-    Returns:
-        List of tickets belonging to the authenticated user, or error dict
-    """
-    # Get bearer token from session state (ADK pattern)
-    bearer_token = tool_context.state.get("user:bearer_token")
-
-    if not bearer_token:
-        return {
-            "error": "Authentication required",
-            "status": 401,
-            "message": "Please log in to access your tickets"
-        }
-
-    # Validate token
-    payload = verify_jwt_token(bearer_token)
-    if not payload:
-        return {
-            "error": "Invalid or expired token",
-            "status": 401,
-            "message": "Your session has expired. Please log in again."
-        }
-
-    current_user = payload.get("username")
-    if not current_user:
-        return {
-            "error": "Token missing username claim",
-            "status": 401
-        }
-
-    # Return user-specific tickets
-    return [t for t in TICKETS_DB if t['user'].lower() == current_user.lower()]
-
-
-@mcp.tool()
-def create_my_ticket(operation: str, tool_context: ToolContext) -> Dict:
-    """Create a new ticket for the authenticated user.
-
-    Args:
-        operation: The operation type
-        tool_context: Automatically injected by ADK framework
-
-    Returns:
-        Created ticket details or error dict
-    """
-    # Get bearer token from session state (ADK pattern)
-    bearer_token = tool_context.state.get("user:bearer_token")
-
-    if not bearer_token:
-        return {
-            "error": "Authentication required",
-            "status": 401
-        }
-
-    payload = verify_jwt_token(bearer_token)
-    if not payload:
-        return {
-            "error": "Invalid or expired token",
-            "status": 401
-        }
-
-    current_user = payload.get("username")
-    if not current_user:
-        return {
-            "error": "Token missing username claim",
-            "status": 401
-        }
-
-    new_id = max([t['id'] for t in TICKETS_DB]) + 1 if TICKETS_DB else 1
-
-    new_ticket = {
-        "id": new_id,
-        "operation": operation,
-        "user": current_user,  # Use authenticated user
-        "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-    }
-
-    TICKETS_DB.append(new_ticket)
-
-    return {
-        "success": True,
-        "ticket": new_ticket,
-        "message": f"Ticket {new_id} created for {current_user}"
-    }
-```
-
-Update agent instructions in `jarvis_agent/mcp_agents/tickets_agent.py`:
-
-```python
-instruction="""You are a tickets management agent using MCP tools.
-
-**Public tools** (no authentication):
-- tickets_get_all_tickets: List all tickets
-- tickets_get_ticket: Get specific ticket by ID
-- tickets_get_user_tickets: Get tickets for specified user
-- tickets_create_ticket: Create ticket for specified user
-
-**Authenticated tools** (require login):
-- tickets_get_my_tickets: Get tickets for authenticated user
-- tickets_create_my_ticket: Create ticket for authenticated user
-
-Authentication is handled automatically via ADK session state.
-When user says "my tickets" or "create a ticket", use authenticated tools."""
-```
-
-**Success Criteria:**
-- [ ] `get_my_tickets` uses `tool_context: ToolContext` (NOT bearer_token parameter)
-- [ ] `create_my_ticket` uses `tool_context: ToolContext`
-- [ ] Tools access token via `tool_context.state.get("user:bearer_token")`
-- [ ] Invalid/missing tokens return proper error dicts
-- [ ] Tool discovery shows 6 tools (4 public + 2 auth)
-- [ ] ADK-compliant from the start (no refactoring needed later)
-
----
-
-### **Task 11: Add ADK-Compliant Authentication to FinOps and Oxygen MCP Servers**
-
-**Priority:** High
-**Dependencies:** Task 10
-**Estimated Time:** 2.5 hours
-
-**Objective:**
-Add authenticated tools using ADK ToolContext pattern to remaining MCP servers.
-
-**✅ ADK-COMPLIANT PATTERN:** Uses `ToolContext` (NOT `bearer_token` parameters).
-
-**Implementation:**
-
-1. **FinOps:** (Optional - FinOps is organization-wide)
-   - Add JWT validation infrastructure using ToolContext pattern
-   - No authenticated tools needed yet (costs are global)
-   - Infrastructure ready for future user-specific cost features
-
-2. **Oxygen:** Add authenticated tools using ToolContext:
-
-```python
-from google.adk.tools import ToolContext
-from auth.jwt_utils import verify_jwt_token
-
-@mcp.tool()
-def get_my_courses(tool_context: ToolContext) -> Dict:
-    """Get courses for authenticated user."""
-    bearer_token = tool_context.state.get("user:bearer_token")
-    if not bearer_token:
-        return {"error": "Authentication required", "status": 401}
-
-    payload = verify_jwt_token(bearer_token)
-    if not payload:
-        return {"error": "Invalid or expired token", "status": 401}
-
-    current_user = payload.get("username")
-    # Return user-specific data...
-
-@mcp.tool()
-def get_my_exams(tool_context: ToolContext) -> Dict:
-    """Get pending exams for authenticated user."""
-    # Same ToolContext pattern...
-
-@mcp.tool()
-def get_my_preferences(tool_context: ToolContext) -> Dict:
-    """Get learning preferences for authenticated user."""
-    # Same ToolContext pattern...
-
-@mcp.tool()
-def get_my_learning_summary(tool_context: ToolContext) -> Dict:
-    """Get complete learning summary for authenticated user."""
-    # Same ToolContext pattern...
-```
-
-**Success Criteria:**
-- [ ] Oxygen has 4 public + 4 auth tools
-- [ ] All authenticated tools use `tool_context: ToolContext` (NOT bearer_token parameter)
-- [ ] Tools access token via `tool_context.state.get("user:bearer_token")`
-- [ ] FinOps ready for future auth tools with ToolContext pattern
-- [ ] All tools validate JWT correctly
-- [ ] ADK-compliant from the start
-
----
-
-### **Task 12: Create ADK Callbacks for Centralized Authentication**
-
-**Priority:** Critical
-**Dependencies:** Tasks 10, 11
-**Estimated Time:** 3 hours
-
-**Objective:**
-Create ADK callbacks module for centralized authentication enforcement using `before_tool_callback`.
-
-**✅ ADK-COMPLIANT PATTERN:** Uses callbacks + App pattern (NOT per-request agent creation).
-
-**Implementation:**
-
-**Create:** `jarvis_agent/callbacks.py`
+**Part 1: Create ADK Callbacks** - `jarvis_agent/callbacks.py`
 
 ```python
 """
@@ -1523,10 +1330,182 @@ def create_root_agent() -> LlmAgent:
 root_agent = create_root_agent()
 ```
 
+**Part 2: Add Authenticated Tools to Tickets MCP Server** - `tickets_mcp_server/server.py`
+
+```python
+# Add at top
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from auth.jwt_utils import verify_jwt_token
+from google.adk.tools import ToolContext
+
+# Add authenticated tools (ADK pattern)
+@mcp.tool()
+def get_my_tickets(tool_context: ToolContext) -> List[Dict]:
+    """Get tickets for the authenticated user.
+
+    This tool requires authentication via ADK session state.
+    Returns tickets that belong to the authenticated user.
+
+    Args:
+        tool_context: Automatically injected by ADK framework
+
+    Returns:
+        List of tickets belonging to the authenticated user, or error dict
+    """
+    # Get bearer token from session state (ADK pattern)
+    bearer_token = tool_context.state.get("user:bearer_token")
+
+    if not bearer_token:
+        return {
+            "error": "Authentication required",
+            "status": 401,
+            "message": "Please log in to access your tickets"
+        }
+
+    # Validate token
+    payload = verify_jwt_token(bearer_token)
+    if not payload:
+        return {
+            "error": "Invalid or expired token",
+            "status": 401,
+            "message": "Your session has expired. Please log in again."
+        }
+
+    current_user = payload.get("username")
+    if not current_user:
+        return {
+            "error": "Token missing username claim",
+            "status": 401
+        }
+
+    # Return user-specific tickets
+    return [t for t in TICKETS_DB if t['user'].lower() == current_user.lower()]
+
+
+@mcp.tool()
+def create_my_ticket(operation: str, tool_context: ToolContext) -> Dict:
+    """Create a new ticket for the authenticated user.
+
+    Args:
+        operation: The operation type
+        tool_context: Automatically injected by ADK framework
+
+    Returns:
+        Created ticket details or error dict
+    """
+    # Get bearer token from session state (ADK pattern)
+    bearer_token = tool_context.state.get("user:bearer_token")
+
+    if not bearer_token:
+        return {
+            "error": "Authentication required",
+            "status": 401
+        }
+
+    payload = verify_jwt_token(bearer_token)
+    if not payload:
+        return {
+            "error": "Invalid or expired token",
+            "status": 401
+        }
+
+    current_user = payload.get("username")
+    if not current_user:
+        return {
+            "error": "Token missing username claim",
+            "status": 401
+        }
+
+    new_id = max([t['id'] for t in TICKETS_DB]) + 1 if TICKETS_DB else 1
+
+    new_ticket = {
+        "id": new_id,
+        "operation": operation,
+        "user": current_user,  # Use authenticated user
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+    }
+
+    TICKETS_DB.append(new_ticket)
+
+    return {
+        "success": True,
+        "ticket": new_ticket,
+        "message": f"Ticket {new_id} created for {current_user}"
+    }
+```
+
+Update agent instructions in `jarvis_agent/mcp_agents/agent_factory.py`:
+
+```python
+# In create_tickets_agent():
+instruction="""You are a tickets management agent using MCP tools.
+
+**Public tools** (no authentication):
+- tickets_get_all_tickets: List all tickets
+- tickets_get_ticket: Get specific ticket by ID
+- tickets_get_user_tickets: Get tickets for specified user
+- tickets_create_ticket: Create ticket for specified user
+
+**Authenticated tools** (require login):
+- tickets_get_my_tickets: Get tickets for authenticated user
+- tickets_create_my_ticket: Create ticket for authenticated user
+
+Authentication is handled automatically via ADK session state.
+When user says "my tickets" or "create a ticket", use authenticated tools."""
+```
+
+**Part 3: Add Authenticated Tools to Oxygen MCP Server** - `oxygen_mcp_server/server.py`
+
+```python
+from google.adk.tools import ToolContext
+from auth.jwt_utils import verify_jwt_token
+
+@mcp.tool()
+def get_my_courses(tool_context: ToolContext) -> Dict:
+    """Get courses for authenticated user."""
+    bearer_token = tool_context.state.get("user:bearer_token")
+    if not bearer_token:
+        return {"error": "Authentication required", "status": 401}
+
+    payload = verify_jwt_token(bearer_token)
+    if not payload:
+        return {"error": "Invalid or expired token", "status": 401}
+
+    current_user = payload.get("username")
+    # Return user-specific data...
+
+@mcp.tool()
+def get_my_exams(tool_context: ToolContext) -> Dict:
+    """Get pending exams for authenticated user."""
+    # Same ToolContext pattern...
+
+@mcp.tool()
+def get_my_preferences(tool_context: ToolContext) -> Dict:
+    """Get learning preferences for authenticated user."""
+    # Same ToolContext pattern...
+
+@mcp.tool()
+def get_my_learning_summary(tool_context: ToolContext) -> Dict:
+    """Get complete learning summary for authenticated user."""
+    # Same ToolContext pattern...
+```
+
+Update Oxygen agent instructions similarly to include authenticated tools.
+
+**Part 4: FinOps (Optional)** - FinOps is organization-wide, no user-specific auth tools needed yet. Infrastructure ready for future features.
+
 **Success Criteria:**
 - [ ] `jarvis_agent/callbacks.py` created with `before_tool_callback`
 - [ ] Callback validates authentication for AUTHENTICATED_TOOLS
 - [ ] Callback blocks execution and returns error dict if auth fails
+- [ ] Authenticated tools added to Tickets MCP server (get_my_tickets, create_my_ticket)
+- [ ] Authenticated tools added to Oxygen MCP server (get_my_courses, get_my_exams, etc.)
+- [ ] All authenticated tools use `tool_context: ToolContext` (NOT bearer_token parameter)
+- [ ] Tools access token via `tool_context.state.get("user:bearer_token")`
+- [ ] Agent instructions updated to document authenticated vs public tools
 - [ ] Agents created ONCE (no bearer_token parameters in agent factory)
 - [ ] Performance: No per-request agent creation overhead
 - [ ] Security: Bearer token never exposed as agent parameter
@@ -1937,7 +1916,7 @@ curl -X POST http://localhost:9990/api/chat \
 
 **Priority:** Medium
 **Dependencies:** Task 15
-**Estimated Time:** 2 hours
+**Estimated Time:** 1 hour
 
 **Objective:**
 Document differences between MCP and Toolbox solutions.
@@ -2195,48 +2174,51 @@ Phase 2 implemented a **parallel MCP solution** alongside the existing Toolbox s
 
 ### Task Overview
 
-**Part A: Build MCP Solution (NO AUTH) - 8 tasks**
-1. Install FastMCP
-2. Build Tickets MCP Server (5011)
-3. Build FinOps MCP Server (5012)
-4. Build Oxygen MCP Server (8012)
-5. Create MCP Agent Factory
-6. Create MCP CLI
-7. Create MCP Web UI (9990)
-8. All-in-one startup script
+**Part A: Build MCP Solution (NO AUTH) - 7 tasks ✅ COMPLETE**
+1. ✅ Install FastMCP
+2. ✅ Build Tickets MCP Server (5011)
+3. ✅ Build FinOps MCP Server (5012)
+4. ✅ Build Oxygen MCP Server (8012)
+5. ✅ Create MCP Agent Factory
+6. ✅ Create MCP CLI
+7. ✅ Create MCP Web UI (9990)
+~~8. All-in-one startup script~~ ❌ NOT REQUIRED
 
-**Part B: Add ADK-Compliant JWT Authentication - 8 tasks**
-9. JWT Infrastructure (shared)
-10. Add ToolContext-based auth to Tickets MCP
-11. Add ToolContext-based auth to FinOps/Oxygen MCP
-12. Create ADK callbacks for centralized authentication
-13. Update MCP CLI with App pattern
-14. Update MCP Web UI with App pattern
-15. End-to-end testing
-16. MCP vs Toolbox comparison
+**Part B: Add ADK-Compliant JWT Authentication - 6 tasks**
+9. Verify JWT Infrastructure (shared) - 30 min
+~~10. Add ToolContext-based auth to Tickets MCP~~ MERGED into Task 12
+~~11. Add ToolContext-based auth to FinOps/Oxygen MCP~~ MERGED into Task 12
+12. **Create ADK callbacks + Add Authenticated Tools** (merged from 10-11) - 5 hours
+13. Update MCP CLI with App pattern - 2.5 hours
+14. Update MCP Web UI with App pattern - 3 hours
+15. End-to-end testing - 2 hours
+16. MCP vs Toolbox comparison - 1 hour
 
 **Part C: Testing & Documentation - 4 tasks**
-17. Run both solutions simultaneously
-18. Update environment config
-19. Comprehensive documentation
-20. Final validation and recommendation
+17. Run both solutions simultaneously - 1 hour
+18. Update environment config - 30 min
+19. Comprehensive documentation - 3 hours
+20. Final validation and recommendation - 2 hours
 
-**Total: 20 tasks**
-**Estimated Time: 45-50 hours (~2 weeks)**
+**Total: 17 tasks (7 complete, 10 remaining)**
+**Estimated Time Remaining: ~20 hours (~3 days)**
 
 ---
 
 ## ✅ ADK-COMPLIANT FROM THE START
 
-**All authentication tasks (10-16) use the correct ADK pattern:**
+**All authentication tasks (9, 12-16) use the correct ADK pattern:**
 - ✅ `ToolContext` for tool authentication (NOT bearer_token parameters)
 - ✅ Session state for token storage (`session.state["user:bearer_token"]`)
 - ✅ Callbacks for centralized auth enforcement (`before_tool_callback`)
 - ✅ App pattern for agent lifecycle (agents created ONCE, not per-request)
+- ✅ Centralized validation (callback handles auth, not individual tools)
 - ✅ OAuth 2.0 ready from day one (Phase 4)
 - ✅ Production-ready authentication architecture
 
 **No refactoring needed** - the implementation is ADK-compliant throughout.
+
+**Tasks 10-11 removed:** The ADK callback pattern provides centralized authentication validation in `before_tool_callback`. Individual tool-level authentication is handled as part of Task 12 (callbacks + authenticated tools), eliminating redundancy.
 
 ### Critical Success Factors
 
@@ -2260,8 +2242,9 @@ Phase 2 implemented a **parallel MCP solution** alongside the existing Toolbox s
 
 ---
 
-**Status:** Ready for Implementation
+**Status:** Part A Complete (7/7) ✅ | Part B Ready for Implementation (0/6) | Part C Ready (0/4)
 **Last Updated:** 2025-12-22
 **Implementation Order:** CRITICAL - Follow documented order
 **Risk Level:** Zero (parallel implementation, existing code untouched)
 **✅ PRODUCTION-READY:** All tasks use ADK-compliant authentication from the start (ToolContext + callbacks + session state)
+**✅ STREAMLINED:** Tasks 8, 10, 11 removed - ADK callback pattern eliminates redundancy

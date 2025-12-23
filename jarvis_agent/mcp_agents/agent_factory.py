@@ -2,18 +2,25 @@
 MCP Agent Factory
 Creates ADK agents that connect to MCP servers via McpToolset.
 
-Phase: 2A - No authentication yet (basic MCP connectivity)
-Authentication will be added in Task 12 (ADK-compliant with callbacks)
+Phase: 2B - Authentication implemented (Task 12 complete)
+Uses ADK-compliant callbacks for centralized authentication validation.
 
 This factory creates agents that connect to the 3 MCP servers:
-- Tickets MCP Server (port 5011)
-- FinOps MCP Server (port 5012)
-- Oxygen MCP Server (port 8012)
+- Tickets MCP Server (port 5011) - 4 public + 2 authenticated tools
+- FinOps MCP Server (port 5012) - 4 public tools (organization-wide)
+- Oxygen MCP Server (port 8012) - 4 public + 4 authenticated tools
+
+Authentication Pattern (ADK-Compliant):
+- Bearer token stored in session.state["user:bearer_token"]
+- Tools access token via tool_context.state.get("user:bearer_token")
+- Centralized validation in jarvis_agent/callbacks.py
+- Agents created ONCE (not per-request)
 """
 
 from google.adk.agents import LlmAgent
 from google.adk.tools.mcp_tool import McpToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import SseConnectionParams
+from jarvis_agent.mcp_agents.auth_context import create_auth_header_provider
 
 # Model configuration
 GEMINI_2_5_FLASH = "gemini-2.5-flash"
@@ -51,22 +58,16 @@ def create_tickets_agent() -> LlmAgent:
 
     # Create MCP toolset connected to tickets MCP server
     # Using SSE connection for HTTP-based MCP server
+    #
+    # AUTHENTICATION PATTERN (Task 13):
+    # - Bearer token stored in session.state["user:bearer_token"] (by CLI/Web UI)
+    # - auth_context.set_bearer_token() called before agent invocation
+    # - header_provider injects token as HTTP Authorization header
+    # - MCP server extracts token from header and passes to tools
     tickets_toolset = McpToolset(
-        connection_params=SseConnectionParams(
-            url=TICKETS_MCP_URL,
-            # NOTE: No headers needed! Authentication uses ADK state management.
-            #
-            # Why no headers?
-            # - Task 5 (here): No auth yet
-            # - Tasks 10-16: Auth uses ADK session state pattern
-            #   * HTTP layer extracts Bearer token from request
-            #   * Token stored in session.state["user:bearer_token"]
-            #   * Tools access via tool_context.state.get("user:bearer_token")
-            #   * McpToolset just provides transport - doesn't need token!
-            #
-            # This is the CORRECT ADK pattern from the start.
-        ),
-        tool_name_prefix="tickets_"  # Optional: prefix tool names for clarity
+        connection_params=SseConnectionParams(url=TICKETS_MCP_URL),
+        header_provider=create_auth_header_provider(),
+        tool_name_prefix="tickets_"
     )
 
     # Create agent with MCP tools
@@ -82,23 +83,30 @@ def create_tickets_agent() -> LlmAgent:
 - Provide ticket information and updates
 - Create new tickets for IT operations
 
-**Available Tools (Phase 2A - Public):**
+**Available Tools:**
+
+PUBLIC TOOLS (no authentication required):
 - tickets_get_all_tickets: List all tickets in the system
 - tickets_get_ticket: Get specific ticket by ID
 - tickets_get_user_tickets: Get tickets for a specific user (by username)
 - tickets_create_ticket: Create new ticket (specify operation and user)
+
+AUTHENTICATED TOOLS (require login):
+- tickets_get_my_tickets: Get tickets for the authenticated user
+- tickets_create_my_ticket: Create ticket for the authenticated user
+
+**Tool Selection Strategy:**
+- When user says "my tickets" or "create a ticket" → Use authenticated tools (get_my_tickets, create_my_ticket)
+- When asking about specific users or all tickets → Use public tools
+- Authentication is handled automatically via ADK session state
+- If user is not logged in, authenticated tools will return an error asking them to log in
 
 **Communication Style:**
 - Be clear and concise about ticket status
 - Always include ticket IDs when referencing tickets
 - Explain what each ticket status means
 - Help users understand the ticketing process
-
-**Important Notes:**
-- Phase 2A: No authentication yet, so you can access all tickets
-- Task 10 will add authenticated tools (get_my_tickets, create_my_ticket)
-- When user says "my tickets", currently ask for their username
-- Future: authenticated versions will automatically know the user
+- If authentication is required and user is not logged in, politely explain they need to log in
 
 **Follow-Up Suggestions:**
 After providing information, ALWAYS suggest 2-3 relevant follow-up queries to help the user. Use this format:
@@ -152,10 +160,8 @@ def create_finops_agent() -> LlmAgent:
 
     # Create MCP toolset connected to finops MCP server
     finops_toolset = McpToolset(
-        connection_params=SseConnectionParams(
-            url=FINOPS_MCP_URL,
-            # No headers - same ADK pattern as tickets
-        ),
+        connection_params=SseConnectionParams(url=FINOPS_MCP_URL),
+        header_provider=create_auth_header_provider(),
         tool_name_prefix="finops_"
     )
 
@@ -253,10 +259,8 @@ def create_oxygen_agent() -> LlmAgent:
 
     # Create MCP toolset connected to oxygen MCP server
     oxygen_toolset = McpToolset(
-        connection_params=SseConnectionParams(
-            url=OXYGEN_MCP_URL,
-            # No headers - same ADK pattern
-        ),
+        connection_params=SseConnectionParams(url=OXYGEN_MCP_URL),
+        header_provider=create_auth_header_provider(),
         tool_name_prefix="oxygen_"
     )
 
@@ -287,11 +291,25 @@ def create_oxygen_agent() -> LlmAgent:
 - Track overall learning progress
 - Identify users who need attention vs those on track
 
-**Available Tools (Phase 2A - Public):**
+**Available Tools:**
+
+PUBLIC TOOLS (no authentication required):
 - oxygen_get_user_courses: Get courses for a specific user (by username)
 - oxygen_get_pending_exams: Get pending exams with deadlines (by username)
 - oxygen_get_user_preferences: Get learning preferences (by username)
 - oxygen_get_learning_summary: Complete learning journey (by username)
+
+AUTHENTICATED TOOLS (require login):
+- oxygen_get_my_courses: Get courses for the authenticated user
+- oxygen_get_my_exams: Get pending exams for the authenticated user
+- oxygen_get_my_preferences: Get learning preferences for the authenticated user
+- oxygen_get_my_learning_summary: Get complete learning summary for the authenticated user
+
+**Tool Selection Strategy:**
+- When user says "my courses", "my exams", "my preferences" → Use authenticated tools (get_my_*)
+- When asking about specific users → Use public tools (get_user_*)
+- Authentication is handled automatically via ADK session state
+- If user is not logged in, authenticated tools will return an error asking them to log in
 
 **Communication Style:**
 Always be encouraging and supportive in your responses:
@@ -299,6 +317,7 @@ Always be encouraging and supportive in your responses:
 - Provide gentle reminders about upcoming deadlines
 - Offer motivation for users who need attention
 - Be clear and specific about dates and deadlines
+- If authentication is required and user is not logged in, politely explain they need to log in
 
 **When showing exam deadlines:**
 - Clearly state the date
@@ -312,13 +331,7 @@ Always be encouraging and supportive in your responses:
 - Highlight achievements (completed courses)
 - Encourage continued learning
 
-**Important Notes:**
-- Phase 2A: Tools require username parameter
-- Task 11 will add authenticated tools (get_my_courses, get_my_exams, etc.)
-- When user says "my courses", currently ask for their username
-- Future: authenticated versions will automatically know the user
-
-**Available Users:** vishal, happy, alex
+**Available Users (for public tools):** vishal, happy, alex
 
 **Follow-Up Suggestions:**
 After providing learning information, ALWAYS suggest 2-3 relevant follow-up queries in an encouraging way. Use this format:
@@ -398,36 +411,98 @@ def create_root_agent() -> LlmAgent:
    - Exam deadlines and reminders
    - Learning progress analytics
 
-**Routing Strategy:**
+**ROUTING STRATEGY - CRITICAL INSTRUCTIONS:**
 
-Delegate to **TicketsAgent** when user asks about:
+**YOU HAVE 3 SUB-AGENTS AVAILABLE:**
+1. **TicketsAgent** - Handles tickets, IT operations
+2. **FinOpsAgent** - Handles costs, budgets, spending
+3. **OxygenAgent** - Handles courses, exams, learning
+
+**MULTI-DOMAIN QUERIES (MOST IMPORTANT):**
+
+When a user query mentions items from DIFFERENT domains, you MUST:
+1. Identify ALL domains mentioned in the query
+2. Delegate to EACH relevant sub-agent (call them one after another)
+3. Wait for each agent's response
+4. Combine ALL responses into one comprehensive answer
+
+**DO NOT just pick one agent - call ALL relevant agents!**
+
+**Examples of Multi-Domain Queries:**
+
+Query: "show my tickets and my courses"
+→ Action: FIRST delegate to TicketsAgent to get tickets
+→ THEN delegate to OxygenAgent to get courses
+→ COMBINE both results in your response
+
+Query: "what are my pending tickets and upcoming exams?"
+→ Action: FIRST delegate to TicketsAgent for tickets
+→ THEN delegate to OxygenAgent for exams
+→ COMBINE both results in your response
+
+Query: "show my budget and my learning progress"
+→ Action: FIRST delegate to FinOpsAgent for budget
+→ THEN delegate to OxygenAgent for learning progress
+→ COMBINE both results in your response
+
+Query: "show my costs, tickets, and courses"
+→ Action: FIRST delegate to FinOpsAgent for costs
+→ THEN delegate to TicketsAgent for tickets
+→ THEN delegate to OxygenAgent for courses
+→ COMBINE all three results in your response
+
+**SINGLE-DOMAIN QUERIES:**
+
+**Delegate ONLY to TicketsAgent** when query is ONLY about:
 - Tickets, IT operations, requests
 - Creating accounts, access, or permissions
 - Ticket status or tracking
 
-Delegate to **FinOpsAgent** when user asks about:
+**Delegate ONLY to FinOpsAgent** when query is ONLY about:
 - Cloud costs, spending, or budgets
 - AWS, GCP, or Azure costs
 - Service costs or cost breakdown
-- Financial analytics
+- User budgets or cost allocation
 
-Delegate to **OxygenAgent** when user asks about:
+**Delegate ONLY to OxygenAgent** when query is ONLY about:
 - Courses, learning, or training
 - Exams, deadlines, or certifications
 - Learning progress or preferences
 - Educational content
 
-**Important Notes:**
-- Phase 2A: No authentication yet
-- Sub-agents require usernames for user-specific data
-- Ask for username if not provided when needed
-- Task 12 will add automatic user detection
+**AUTHENTICATION:**
+- Authentication is automatic via session state
+- "my tickets", "my courses", "my budget" → uses authenticated tools automatically
+- "tickets for alex", "courses for vishal" → uses public tools with username parameter
 
 **Communication Style:**
 - Be helpful and professional
-- Route queries to the right specialist
+- Route queries to the right specialist(s)
+- When combining results from multiple agents:
+  * Present information in a clear, organized format
+  * Use section headers to separate different types of information
+  * Maintain consistent formatting across sections
+  * Summarize the complete picture at the end
 - Provide clear, actionable responses
 - Celebrate achievements and progress
+
+**Multi-Domain Response Format:**
+When you call multiple sub-agents, organize the response like this:
+
+```
+[Intro acknowledging the multi-part query]
+
+**Tickets:**
+[Results from TicketsAgent]
+
+**Exams/Courses:**
+[Results from OxygenAgent]
+
+**Costs/Budget:**
+[Results from FinOpsAgent]
+
+[Summary tying everything together]
+```
 
 **Follow-Up Guidance:**
 Your sub-agents will provide domain-specific follow-up suggestions. If you answer directly without delegating to a sub-agent, provide cross-domain suggestions that encourage exploration:
