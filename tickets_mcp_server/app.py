@@ -101,11 +101,10 @@ class BearerTokenBackend(AuthenticationBackend):
 # =============================================================================
 # Create MCP Application with Authentication Middleware
 # =============================================================================
-# Use FastMCP's http_app() to create HTTP endpoints
-# Note: Removed transport="sse" to support HTTP POST testing
-# For ADK agents with SSE, can add back: transport="sse"
+# Use FastMCP's http_app() to create HTTP endpoints with SSE transport
+# SSE (Server-Sent Events) is required for ADK agents to connect
 
-app = mcp.http_app(path="/mcp")
+app = mcp.http_app(path="/mcp", transport="sse")
 
 # Add authentication middleware to FastAPI app
 # This makes request.user available to all tools via get_http_request()
