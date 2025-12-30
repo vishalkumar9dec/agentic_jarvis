@@ -436,7 +436,8 @@ class AgentRegistry:
         Process:
         1. Load JSON from FileStore
         2. For each agent config:
-           - Use AgentFactoryResolver to create agent instance
+           - For local agents: Use AgentFactoryResolver to create agent instance
+           - For remote agents: Create RemoteA2aAgent from agent card URL
            - Register with saved capabilities/tags/enabled status
         """
         if not self._persistence_enabled():
@@ -458,15 +459,41 @@ class AgentRegistry:
 
             for agent_name, agent_data in agents_data.items():
                 try:
-                    # Recreate agent from factory config
-                    agent_config = {
-                        "agent_type": agent_data["agent_type"],
-                        "factory_module": agent_data["factory_module"],
-                        "factory_function": agent_data["factory_function"],
-                        "factory_params": agent_data.get("factory_params", {})
-                    }
+                    agent_type = agent_data.get("type", "local")
 
-                    agent = self.factory_resolver.create_agent(agent_config)
+                    if agent_type == "remote":
+                        # Recreate remote agent from agent card URL
+                        from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
+
+                        agent_config = {
+                            "type": "remote",
+                            "agent_type": agent_data["agent_type"],
+                            "agent_card_url": agent_data["agent_card_url"],
+                            "status": agent_data.get("status", "pending"),
+                            "provider": agent_data.get("provider", {})
+                        }
+
+                        # Add auth_config if present
+                        if "auth_config" in agent_data:
+                            agent_config["auth_config"] = agent_data["auth_config"]
+
+                        agent = RemoteA2aAgent(
+                            name=agent_data["name"],
+                            description=agent_data.get("description", "Remote agent"),
+                            agent_card=agent_data["agent_card_url"]
+                        )
+
+                    else:
+                        # Recreate local agent from factory config
+                        agent_config = {
+                            "type": "local",
+                            "agent_type": agent_data["agent_type"],
+                            "factory_module": agent_data["factory_module"],
+                            "factory_function": agent_data["factory_function"],
+                            "factory_params": agent_data.get("factory_params", {})
+                        }
+
+                        agent = self.factory_resolver.create_agent(agent_config)
 
                     # Recreate capabilities
                     capabilities = AgentCapability.from_dict(agent_data["capabilities"])
@@ -490,10 +517,13 @@ class AgentRegistry:
                     self.file_store = temp_file_store
 
                     loaded_count += 1
-                    logger.debug(f"Loaded agent '{agent_name}'")
+                    logger.debug(f"Loaded {agent_type} agent '{agent_name}'")
 
                 except (AgentFactoryError, KeyError) as e:
                     logger.error(f"Failed to load agent '{agent_name}': {e}")
+                    continue
+                except Exception as e:
+                    logger.error(f"Unexpected error loading agent '{agent_name}': {e}")
                     continue
 
             logger.info(f"Loaded {loaded_count}/{len(agents_data)} agents from file")
@@ -507,6 +537,7 @@ class AgentRegistry:
         Serialize registry to JSON format.
 
         Stores only metadata, not agent instances.
+        Supports both local agents (factory-based) and remote agents (A2A-based).
 
         Returns:
             Dictionary with agents metadata and factory configs
@@ -518,17 +549,32 @@ class AgentRegistry:
         for agent_name, registered in self.agents.items():
             agent_config = self._agent_configs.get(agent_name, {})
 
-            serialized["agents"][agent_name] = {
+            # Base fields common to all agents
+            agent_data = {
                 "name": registered.agent.name,
                 "description": registered.agent.description or "",
                 "agent_type": agent_config.get("agent_type", "unknown"),
-                "factory_module": agent_config.get("factory_module", ""),
-                "factory_function": agent_config.get("factory_function", ""),
-                "factory_params": agent_config.get("factory_params", {}),
+                "type": agent_config.get("type", "local"),  # local or remote
                 "capabilities": registered.capabilities.to_dict(),
                 "tags": list(registered.tags),
                 "enabled": registered.enabled,
                 "registered_at": registered.registered_at.isoformat()
             }
+
+            # Add type-specific fields
+            if agent_config.get("type") == "remote":
+                # Remote agent fields
+                agent_data["agent_card_url"] = agent_config.get("agent_card_url", "")
+                agent_data["status"] = agent_config.get("status", "pending")
+                agent_data["provider"] = agent_config.get("provider", {})
+                if "auth_config" in agent_config:
+                    agent_data["auth_config"] = agent_config.get("auth_config")
+            else:
+                # Local agent fields (factory-based)
+                agent_data["factory_module"] = agent_config.get("factory_module", "")
+                agent_data["factory_function"] = agent_config.get("factory_function", "")
+                agent_data["factory_params"] = agent_config.get("factory_params", {})
+
+            serialized["agents"][agent_name] = agent_data
 
         return serialized
