@@ -40,26 +40,26 @@ class AgentCapabilityModel(BaseModel):
 
 
 class AgentConfigModel(BaseModel):
-    """Agent factory configuration."""
+    """A2A Agent configuration."""
 
-    agent_type: str = Field(..., description="Type of agent (e.g., 'tickets', 'finops')")
-    factory_module: str = Field(..., description="Module path for factory function")
-    factory_function: str = Field(..., description="Factory function name")
-    factory_params: Dict[str, Any] = Field(default_factory=dict, description="Parameters for factory function")
+    agent_type: str = Field(..., description="Type of agent (e.g., 'tickets', 'finops', 'oxygen')")
+    agent_card_url: str = Field(..., description="Agent card URL (A2A protocol)")
+    name: str = Field(..., description="Agent name")
+    description: str = Field(..., description="Agent description")
 
     class Config:
         json_schema_extra = {
             "example": {
                 "agent_type": "tickets",
-                "factory_module": "jarvis_agent.mcp_agents.agent_factory",
-                "factory_function": "create_tickets_agent",
-                "factory_params": {}
+                "agent_card_url": "http://localhost:8080/.well-known/agent-card.json",
+                "name": "TicketsAgent",
+                "description": "IT operations ticket management"
             }
         }
 
 
 class RegisterAgentRequest(BaseModel):
-    """Request to register a new local agent (first-party)."""
+    """Request to register a new A2A agent."""
 
     agent_config: AgentConfigModel
     capabilities: AgentCapabilityModel

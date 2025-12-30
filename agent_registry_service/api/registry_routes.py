@@ -265,42 +265,49 @@ async def register_agent(
     - 400: Invalid configuration or agent already exists
     """
     try:
-        # Convert config to dict
+        # Convert config to dict for A2A agent
         agent_config = {
-            "type": "local",  # Mark as local agent
+            "type": "remote",  # A2A agents are remote
             "agent_type": request.agent_config.agent_type,
-            "factory_module": request.agent_config.factory_module,
-            "factory_function": request.agent_config.factory_function,
-            "factory_params": request.agent_config.factory_params
+            "agent_card_url": request.agent_config.agent_card_url,
+            "name": request.agent_config.name,
+            "description": request.agent_config.description
         }
-
-        # Check if registry has factory resolver
-        if not hasattr(registry, 'factory_resolver') or registry.factory_resolver is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Agent registration requires factory resolver. Registry not configured for dynamic agent creation."
-            )
-
-        # Create agent from factory
-        agent = registry.factory_resolver.create_agent(agent_config)
 
         # Convert capabilities
         capabilities = _model_to_capability(request.capabilities)
 
-        # Register agent
+        # For A2A agents, we don't create an agent instance here
+        # Instead, we store the agent_card_url for dynamic discovery
+        # The router will create RemoteA2aAgent instances when needed
+
+        # Create a placeholder agent info for registration
+        from jarvis_agent.registry_client import AgentInfo
+        agent_info = AgentInfo(
+            name=request.agent_config.name,
+            type="remote",
+            agent_type=request.agent_config.agent_type,
+            description=request.agent_config.description,
+            capabilities=capabilities,
+            enabled=True,
+            tags=list(request.tags),
+            agent_card_url=request.agent_config.agent_card_url
+        )
+
+        # Register agent info (not actual agent instance)
         registry.register(
-            agent,
+            agent_info,
             capabilities,
             tags=set(request.tags),
             agent_config=agent_config
         )
 
-        logger.info(f"Successfully registered agent: {agent.name}")
+        logger.info(f"Successfully registered A2A agent: {agent_info.name}")
 
         return SuccessResponse(
             status="registered",
-            message=f"Agent '{agent.name}' registered successfully",
-            data={"agent_name": agent.name}
+            message=f"Agent '{agent_info.name}' registered successfully",
+            data={"agent_name": agent_info.name}
         )
 
     except ValueError as e:
@@ -373,7 +380,16 @@ async def register_remote_agent(
 
         # Step 2: Extract agent information from card
         try:
-            card_data = agent_card.get("agentCard", {})
+            # Support both old format (with "agentCard" wrapper) and new format (flat)
+            # Old format: {"agentCard": {"name": "...", ...}}
+            # New format: {"name": "...", ...}
+            if "agentCard" in agent_card:
+                # Old A2A protocol format
+                card_data = agent_card.get("agentCard", {})
+            else:
+                # New A2A protocol format (v0.3.0+)
+                card_data = agent_card
+
             agent_name = card_data.get("name")
             agent_description = card_data.get("description", "Remote agent")
 

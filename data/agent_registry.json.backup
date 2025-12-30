@@ -1,0 +1,171 @@
+{
+  "agents": {
+    "OxygenAgent": {
+      "name": "OxygenAgent",
+      "description": "Learning and development platform agent that manages user courses, exams, and preferences",
+      "agent_type": "OxygenAgent",
+      "type": "remote",
+      "capabilities": {
+        "domains": [
+          "learning",
+          "education",
+          "courses",
+          "training",
+          "development"
+        ],
+        "operations": [
+          "read",
+          "search",
+          "enroll",
+          "schedule",
+          "track"
+        ],
+        "entities": [
+          "course",
+          "exam",
+          "enrollment",
+          "user",
+          "deadline",
+          "preference",
+          "progress",
+          "certification"
+        ],
+        "keywords": [
+          "preferences",
+          "completed",
+          "education",
+          "enrollment",
+          "oxygen",
+          "training",
+          "course",
+          "pending",
+          "deadline",
+          "enroll",
+          "exam",
+          "learning",
+          "exams",
+          "preference",
+          "courses",
+          "upcoming",
+          "progress",
+          "certification"
+        ],
+        "examples": [
+          "show my courses",
+          "what exams do I have pending",
+          "show courses for alice",
+          "show learning summary",
+          "what are my learning preferences"
+        ],
+        "requires_auth": false,
+        "priority": 7
+      },
+      "tags": [
+        "a2a",
+        "third-party",
+        "learning",
+        "remote"
+      ],
+      "enabled": true,
+      "registered_at": "2025-12-30T16:00:41.584620+00:00",
+      "agent_card_url": "http://localhost:8002/.well-known/agent-card.json",
+      "status": "pending",
+      "provider": {
+        "name": "Oxygen Learning Platform",
+        "website": "http://localhost:8002",
+        "support_email": "support@oxygen.example.com",
+        "documentation": "http://localhost:8002/docs"
+      }
+    },
+    "TicketsAgent": {
+      "name": "TicketsAgent",
+      "description": "IT operations ticket management",
+      "agent_type": "tickets",
+      "type": "remote",
+      "capabilities": {
+        "domains": [
+          "tickets",
+          "IT",
+          "operations"
+        ],
+        "operations": [
+          "create",
+          "read",
+          "update",
+          "list"
+        ],
+        "entities": [
+          "ticket",
+          "request",
+          "vpn",
+          "gitlab"
+        ],
+        "keywords": [
+          "IT",
+          "ticket",
+          "operation"
+        ],
+        "examples": [],
+        "requires_auth": false,
+        "priority": 10
+      },
+      "tags": [
+        "a2a",
+        "production",
+        "core"
+      ],
+      "enabled": true,
+      "registered_at": "2025-12-30T16:00:50.091553+00:00",
+      "agent_card_url": "http://localhost:8080/.well-known/agent-card.json",
+      "status": "pending",
+      "provider": {}
+    },
+    "FinOpsAgent": {
+      "name": "FinOpsAgent",
+      "description": "Cloud financial operations and cost analytics",
+      "agent_type": "finops",
+      "type": "remote",
+      "capabilities": {
+        "domains": [
+          "costs",
+          "finops",
+          "cloud",
+          "budget"
+        ],
+        "operations": [
+          "read",
+          "analyze",
+          "breakdown"
+        ],
+        "entities": [
+          "cost",
+          "budget",
+          "service",
+          "provider"
+        ],
+        "keywords": [
+          "gcp",
+          "cost",
+          "budget",
+          "azure",
+          "aws"
+        ],
+        "examples": [],
+        "requires_auth": false,
+        "priority": 8
+      },
+      "tags": [
+        "a2a",
+        "production",
+        "core"
+      ],
+      "enabled": true,
+      "registered_at": "2025-12-30T16:00:50.095283+00:00",
+      "agent_card_url": "http://localhost:8081/.well-known/agent-card.json",
+      "status": "pending",
+      "provider": {}
+    }
+  },
+  "version": "1.0.0",
+  "last_updated": "2025-12-30T16:00:50.095300+00:00"
+}
