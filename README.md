@@ -49,10 +49,59 @@ Open multiple terminal windows:
 
 ### 4. Test the System
 
+#### Option A: CLI Interface
 ```bash
 # Run CLI interface
 python main.py
 ```
+
+#### Option B: Web UI (Recommended)
+
+**Prerequisites:**
+```bash
+# Terminal 1: Auth Service
+cd auth
+python auth_service.py
+
+# Terminal 2: Registry Service
+cd agent_registry_service
+python registry_service.py
+
+# Terminal 3: Tickets Agent
+cd agents_phase2/tickets_agent
+python start_tickets_agent.py
+
+# Terminal 4: FinOps Agent
+cd agents_phase2/finops_agent
+python start_finops_agent.py
+
+# Terminal 5: Oxygen Agent
+cd agents_phase2/oxygen_agent
+python start_oxygen_agent.py
+
+# Terminal 6: Web UI Server
+cd web_ui
+python server_phase2.py
+```
+
+**Access Web UI:**
+1. Open browser: `http://localhost:9999`
+2. Login with demo credentials:
+   - **vishal** / password123 (developer)
+   - **happy** / password123 (developer)
+   - **alex** / password123 (devops)
+   - **admin** / admin123 (admin)
+
+**Quick Test:**
+```
+Try these queries in the chat:
+- "show my tickets"
+- "show my courses"
+- "show AWS cost"
+- "show my tickets and pending exams"
+```
+
+See [Web UI Testing Guide](./docs/WEBUI_TESTING_GUIDE.md) for comprehensive testing instructions.
 
 ## Documentation
 
@@ -64,6 +113,7 @@ python main.py
 - [Phase 2 Plan](./docs/PHASE_2_PLAN.md) - JWT Authentication implementation
 - [Authentication Architecture](./docs/AUTHENTICATION_ARCHITECTURE.md) - Authentication design (proposed)
 - [Environment Configuration](./docs/ENVIRONMENT.md) - Configuration guide
+- [Web UI Testing Guide](./docs/WEBUI_TESTING_GUIDE.md) - Web UI testing instructions ⭐
 
 **Developer:**
 - [CLAUDE.md](./CLAUDE.md) - Development guide for Claude Code
@@ -73,35 +123,58 @@ python main.py
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│     Jarvis (Root Orchestrator)          │
-└──────────┬──────────────────────────────┘
-           │
-    ┌──────┴──────┐
-    │             │
-┌───▼────┐   ┌───▼─────┐   ┌──────────┐
-│Tickets │   │ FinOps  │   │ Oxygen   │
-│Agent   │   │ Agent   │   │ (A2A)    │
-└───┬────┘   └───┬─────┘   └────┬─────┘
-    │            │               │
-┌───▼────┐   ┌──▼──────┐   ┌────▼─────┐
-│Toolbox │   │Toolbox  │   │A2A Server│
-│:5001   │   │:5002    │   │:8002     │
-└────────┘   └─────────┘   └──────────┘
+┌──────────────────────────────────────────────────────────┐
+│                     Web UI (Browser)                     │
+│                   http://localhost:9999                  │
+└───────────────────────────┬──────────────────────────────┘
+                            │ JWT Auth
+                    ┌───────▼────────┐
+                    │  Auth Service  │
+                    │     :9998      │
+                    └────────────────┘
+                            │
+                    ┌───────▼────────┐
+                    │ Registry Service│
+                    │     :8003      │
+                    └───────┬────────┘
+                            │
+                ┌───────────▼────────────┐
+                │ Jarvis (Orchestrator)  │
+                └───────────┬────────────┘
+                            │
+           ┌────────────────┼────────────────┐
+           │                │                │
+    ┌──────▼──────┐  ┌──────▼──────┐  ┌─────▼──────┐
+    │   Tickets   │  │   FinOps    │  │   Oxygen   │
+    │   Agent     │  │   Agent     │  │   Agent    │
+    │   :8080     │  │   :8081     │  │   :8082    │
+    └─────────────┘  └─────────────┘  └────────────┘
 ```
+
+**Ports:**
+- **9999:** Web UI Server (FastAPI)
+- **9998:** Authentication Service (JWT)
+- **8003:** Registry Service (Sessions & History)
+- **8080:** Tickets Agent (A2A)
+- **8081:** FinOps Agent (A2A)
+- **8082:** Oxygen Agent (A2A)
 
 ## Features
 
-### Phase 1: Core Functionality (Current)
+### Phase 1: Core Functionality (Completed)
 - ✅ Multi-agent orchestration with Google ADK
 - ✅ IT Tickets management (TicketsAgent)
 - ✅ Cloud cost analytics (FinOpsAgent)
 - ✅ Learning & development tracking (OxygenAgent via A2A)
-- 🔄 Web UI (In Progress)
+- ✅ Web UI with JWT authentication
+- ✅ User session management
+- ✅ Context-aware user queries
 
-### Phase 2: JWT Authentication (Planned)
-- Bearer token authentication
-- User-specific data access control
+### Phase 2: JWT Authentication (Completed)
+- ✅ Bearer token authentication
+- ✅ User-specific data access control
+- ✅ Admin privileges for cross-user access
+- ✅ Secure session management with Registry Service
 
 ### Phase 3: Memory & Context (Planned)
 - Session management
