@@ -1,0 +1,138 @@
+{
+  "agents": {
+    "OxygenAgent": {
+      "name": "OxygenAgent",
+      "description": "Learning and development platform",
+      "agent_type": "oxygen",
+      "type": "remote",
+      "capabilities": {
+        "domains": [
+          "learning",
+          "courses",
+          "exams",
+          "education"
+        ],
+        "operations": [
+          "read",
+          "track",
+          "monitor"
+        ],
+        "entities": [
+          "course",
+          "exam",
+          "preference",
+          "deadline"
+        ],
+        "keywords": [
+          "exam",
+          "course",
+          "learning",
+          "education"
+        ],
+        "examples": [],
+        "requires_auth": false,
+        "priority": 7
+      },
+      "tags": [
+        "a2a",
+        "core",
+        "production"
+      ],
+      "enabled": true,
+      "registered_at": "2025-12-31T08:13:10.821102+00:00",
+      "agent_card_url": "http://localhost:8082/.well-known/agent-card.json",
+      "status": "pending",
+      "provider": {}
+    },
+    "TicketsAgent": {
+      "name": "TicketsAgent",
+      "description": "IT operations ticket management",
+      "agent_type": "tickets",
+      "type": "remote",
+      "capabilities": {
+        "domains": [
+          "tickets",
+          "IT",
+          "operations"
+        ],
+        "operations": [
+          "create",
+          "read",
+          "update",
+          "list"
+        ],
+        "entities": [
+          "ticket",
+          "request",
+          "vpn",
+          "gitlab"
+        ],
+        "keywords": [
+          "operation",
+          "ticket",
+          "IT"
+        ],
+        "examples": [],
+        "requires_auth": false,
+        "priority": 10
+      },
+      "tags": [
+        "a2a",
+        "core",
+        "production"
+      ],
+      "enabled": true,
+      "registered_at": "2025-12-31T08:13:10.821131+00:00",
+      "agent_card_url": "http://localhost:8080/.well-known/agent-card.json",
+      "status": "pending",
+      "provider": {}
+    },
+    "FinOpsAgent": {
+      "name": "FinOpsAgent",
+      "description": "Cloud financial operations and cost analytics",
+      "agent_type": "finops",
+      "type": "remote",
+      "capabilities": {
+        "domains": [
+          "costs",
+          "finops",
+          "cloud",
+          "budget"
+        ],
+        "operations": [
+          "read",
+          "analyze",
+          "breakdown"
+        ],
+        "entities": [
+          "cost",
+          "budget",
+          "service",
+          "provider"
+        ],
+        "keywords": [
+          "gcp",
+          "azure",
+          "aws",
+          "budget",
+          "cost"
+        ],
+        "examples": [],
+        "requires_auth": false,
+        "priority": 8
+      },
+      "tags": [
+        "a2a",
+        "core",
+        "production"
+      ],
+      "enabled": true,
+      "registered_at": "2025-12-31T08:13:10.821144+00:00",
+      "agent_card_url": "http://localhost:8081/.well-known/agent-card.json",
+      "status": "pending",
+      "provider": {}
+    }
+  },
+  "version": "1.0.0",
+  "last_updated": "2025-12-31T08:13:10.823138+00:00"
+}

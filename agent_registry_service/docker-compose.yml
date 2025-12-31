@@ -1,0 +1,63 @@
+# =============================================================================
+# Agent Registry Service - Docker Compose Configuration
+# =============================================================================
+# This docker-compose file provides an easy way to run the Agent Registry
+# Service with persistent data storage.
+#
+# Usage:
+#   docker-compose up -d          # Start in background
+#   docker-compose logs -f        # View logs
+#   docker-compose down           # Stop service
+#   docker-compose down -v        # Stop and remove volumes
+# =============================================================================
+
+version: '3.8'
+
+services:
+  agent-registry-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: agent-registry-service
+
+    ports:
+      - "8003:8003"
+
+    volumes:
+      # Persist data directory
+      - ./data:/app/data
+
+      # Mount source code for development (optional - comment out for production)
+      # - .:/app
+
+    environment:
+      # Application settings
+      - REGISTRY_FILE_PATH=/app/data/agent_registry.json
+      - SESSION_DB_PATH=/app/data/sessions.db
+      - CORS_ORIGINS=*
+      - LOG_LEVEL=INFO
+
+      # Google API Key (load from .env file or set here)
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    restart: unless-stopped
+
+    networks:
+      - jarvis-network
+
+networks:
+  jarvis-network:
+    driver: bridge
+
+# Optional: Add volumes for explicit data persistence
+volumes:
+  agent-registry-data:
+    driver: local

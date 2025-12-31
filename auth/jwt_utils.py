@@ -19,22 +19,30 @@ JWT_EXPIRATION_HOURS = 24
 
 def create_jwt_token(username: str, user_id: str, role: str = "user") -> str:
     """
-    Create JWT token for authenticated user.
+    Create OAuth 2.0 compatible JWT token.
+
+    Phase 2: Uses HS256 (symmetric key)
+    Phase 4: Will use RS256 (asymmetric key) for OAuth
 
     Args:
         username: Username of the authenticated user
-        user_id: Unique user identifier
-        role: User role (e.g., 'admin', 'user', 'developer', etc.)
+        user_id: Unique user identifier (becomes 'sub' claim)
+        role: User role (custom claim)
 
     Returns:
         JWT token string
     """
     payload = {
-        "username": username,
-        "user_id": user_id,
-        "role": role,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS),
-        "iat": datetime.now(timezone.utc)
+        # OAuth 2.0 standard claims
+        "sub": user_id,                                                      # Subject (OAuth standard)
+        "iss": "jarvis-auth",                                               # Issuer
+        "aud": "jarvis-api",                                                # Audience
+        "iat": datetime.now(timezone.utc),                                  # Issued at
+        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS),  # Expiration
+
+        # Custom claims
+        "username": username,                                               # Keep for convenience
+        "role": role                                                        # User role
     }
 
     token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
@@ -45,6 +53,8 @@ def verify_jwt_token(token: str) -> Optional[Dict]:
     """
     Verify JWT token and return payload if valid.
 
+    Validates OAuth 2.0 standard claims (iss, aud, exp).
+
     Args:
         token: JWT token string
 
@@ -52,7 +62,13 @@ def verify_jwt_token(token: str) -> Optional[Dict]:
         Token payload dict if valid, None if invalid/expired
     """
     try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM],
+            audience="jarvis-api",  # Validate audience claim
+            issuer="jarvis-auth"    # Validate issuer claim
+        )
         return payload
     except jwt.ExpiredSignatureError:
         # Token has expired

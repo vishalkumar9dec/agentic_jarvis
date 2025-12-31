@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jarvis - Chat</title>
+    <!-- Markdown rendering library -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -56,6 +58,24 @@
             background-color: #f0f0f0;
         }
 
+        .network-status {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+        }
+
+        .network-status .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #4CAF50;
+        }
+
+        .network-status.offline .dot {
+            background-color: #f44336;
+        }
+
         .chat-container {
             flex: 1;
             display: flex;
@@ -95,12 +115,104 @@
             font-size: 12px;
             color: #666;
             margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .message-label .timestamp {
+            font-size: 10px;
+            color: #999;
+            font-weight: normal;
+            margin-left: 8px;
         }
 
         .message-text {
             font-size: 14px;
             color: #333;
             white-space: pre-wrap;
+        }
+
+        /* Markdown rendering styles */
+        .message-text pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+
+        .message-text code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 13px;
+            color: #d63384;
+        }
+
+        .message-text pre code {
+            background: transparent;
+            padding: 0;
+            color: #f8f8f2;
+        }
+
+        .message-text ul,
+        .message-text ol {
+            margin-left: 20px;
+            margin-top: 8px;
+            margin-bottom: 8px;
+        }
+
+        .message-text li {
+            margin-bottom: 4px;
+        }
+
+        .message-text p {
+            margin-bottom: 8px;
+        }
+
+        .message-text h1,
+        .message-text h2,
+        .message-text h3 {
+            margin-top: 12px;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .message-text blockquote {
+            border-left: 4px solid #4CAF50;
+            padding-left: 12px;
+            margin: 10px 0;
+            color: #666;
+            font-style: italic;
+        }
+
+        .message-text a {
+            color: #4CAF50;
+            text-decoration: none;
+        }
+
+        .message-text a:hover {
+            text-decoration: underline;
+        }
+
+        .message-text table {
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+
+        .message-text table th,
+        .message-text table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        .message-text table th {
+            background-color: #f5f5f5;
+            font-weight: 600;
         }
 
         .input-container {
@@ -155,6 +267,132 @@
         .welcome-message li {
             padding: 5px 0;
         }
+
+        .suggestions-container {
+            padding: 10px 20px;
+            border-top: 1px solid #e0e0e0;
+            background-color: #fafafa;
+        }
+
+        .suggestions-title {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .suggestion-chip {
+            background-color: white;
+            border: 1px solid #4CAF50;
+            color: #4CAF50;
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .suggestion-chip:hover {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .suggestion-chip:active {
+            transform: scale(0.95);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* Loading animations */
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 10px 15px;
+            background-color: #f5f5f5;
+            border-radius: 8px;
+            width: fit-content;
+            margin-bottom: 15px;
+        }
+
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #999;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.7;
+            }
+            30% {
+                transform: translateY(-10px);
+                opacity: 1;
+            }
+        }
+
+        /* Smooth message fade-in */
+        .message {
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Send button loading state */
+        #sendButton.loading {
+            position: relative;
+            color: transparent;
+        }
+
+        #sendButton.loading::after {
+            content: "";
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            top: 50%;
+            left: 50%;
+            margin-left: -8px;
+            margin-top: -8px;
+            border: 2px solid white;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
     </style>
 </head>
 <body>
@@ -162,6 +400,10 @@
         <h1>🤖 Jarvis</h1>
         <div class="user-info">
             <span class="user-name" id="userName"></span>
+            <span class="network-status" id="networkStatus">
+                <span class="dot"></span>
+                <span>Online</span>
+            </span>
             <button class="logout-btn" onclick="logout()">Logout</button>
         </div>
     </div>
@@ -178,6 +420,11 @@
                 </ul>
                 <p style="margin-top: 20px; font-size: 14px;">Type a message to get started</p>
             </div>
+        </div>
+
+        <div class="suggestions-container" id="suggestionsContainer">
+            <div class="suggestions-title">Quick suggestions:</div>
+            <div class="suggestions" id="suggestions"></div>
         </div>
 
         <div class="input-container">
@@ -202,8 +449,26 @@
         const messageInput = document.getElementById('messageInput');
         const sendButton = document.getElementById('sendButton');
 
-        // Initialize session
-        let sessionId = `web-session-${user.username}-${Date.now()}`;
+        // Initialize session - use stored session or will be set by backend
+        let sessionId = localStorage.getItem(`jarvis_session_${user.username}`) || null;
+
+        // Load conversation history on page load
+        loadHistory();
+
+        // Suggestion chips
+        const suggestionChips = [
+            "show my tickets",
+            "show my courses",
+            "show my pending exams",
+            "show AWS cost",
+            "show GCP cost",
+            "show all tickets",
+            "show my tickets and pending exams",
+            "what are my upcoming deadlines"
+        ];
+
+        // Initialize suggestions
+        renderSuggestions();
 
         // Handle Enter key
         messageInput.addEventListener('keypress', (e) => {
@@ -212,25 +477,179 @@
             }
         });
 
-        async function sendMessage() {
-            const message = messageInput.value.trim();
-            if (!message) return;
+        function renderSuggestions() {
+            const suggestionsDiv = document.getElementById('suggestions');
+            suggestionsDiv.innerHTML = '';
 
-            // Clear input
-            messageInput.value = '';
+            suggestionChips.forEach(suggestion => {
+                const chip = document.createElement('button');
+                chip.className = 'suggestion-chip';
+                chip.textContent = suggestion;
+                chip.onclick = () => {
+                    messageInput.value = suggestion;
+                    messageInput.focus();
+                    sendMessage();
+                };
+                suggestionsDiv.appendChild(chip);
+            });
+        }
 
-            // Disable send button
-            sendButton.disabled = true;
-            sendButton.textContent = 'Sending...';
+        function hideSuggestions() {
+            document.getElementById('suggestionsContainer').classList.add('hidden');
+        }
 
-            // Clear welcome message if it's the first message
-            const welcomeMsg = messagesDiv.querySelector('.welcome-message');
-            if (welcomeMsg) {
-                welcomeMsg.remove();
+        function showSuggestions() {
+            document.getElementById('suggestionsContainer').classList.remove('hidden');
+        }
+
+        function addContextMessage(totalMessages, shownMessages) {
+            const contextDiv = document.createElement('div');
+            contextDiv.className = 'message assistant';
+            contextDiv.style.backgroundColor = '#fff3cd';
+            contextDiv.style.borderLeft = '4px solid #4CAF50';
+
+            const label = document.createElement('div');
+            label.className = 'message-label';
+            label.textContent = 'Jarvis';
+
+            const textDiv = document.createElement('div');
+            textDiv.className = 'message-text';
+
+            if (totalMessages > shownMessages) {
+                textDiv.textContent = `Welcome back! You have ${totalMessages} messages in your history. Showing your last ${shownMessages} messages. This is where you left off:`;
+            } else {
+                textDiv.textContent = `Welcome back! This is where you left off:`;
             }
 
-            // Add user message to chat
-            addMessage('user', message);
+            contextDiv.appendChild(label);
+            contextDiv.appendChild(textDiv);
+            messagesDiv.appendChild(contextDiv);
+        }
+
+        function updateSuggestionsForContext(lastQuery) {
+            const query = lastQuery.toLowerCase();
+
+            let contextualChips = [];
+
+            // Determine context from last query
+            if (query.includes('ticket')) {
+                contextualChips = [
+                    "create new ticket",
+                    "show pending tickets",
+                    "show completed tickets",
+                    "show all tickets"
+                ];
+            } else if (query.includes('course') || query.includes('learning')) {
+                contextualChips = [
+                    "show pending exams",
+                    "show course progress",
+                    "show upcoming deadlines",
+                    "enroll in new course"
+                ];
+            } else if (query.includes('exam')) {
+                contextualChips = [
+                    "show my courses",
+                    "show exam schedule",
+                    "show upcoming deadlines",
+                    "show completed courses"
+                ];
+            } else if (query.includes('cost') || query.includes('spend') || query.includes('aws') || query.includes('gcp')) {
+                contextualChips = [
+                    "show GCP cost",
+                    "show AWS cost",
+                    "show Azure cost",
+                    "cost breakdown by service"
+                ];
+            } else {
+                // Default suggestions
+                contextualChips = [
+                    "show my tickets",
+                    "show my courses",
+                    "show my pending exams",
+                    "show cloud costs"
+                ];
+            }
+
+            // Update suggestion chips with context-aware ones
+            const suggestionsDiv = document.getElementById('suggestions');
+            suggestionsDiv.innerHTML = '';
+
+            contextualChips.forEach(suggestion => {
+                const chip = document.createElement('button');
+                chip.className = 'suggestion-chip';
+                chip.textContent = suggestion;
+                chip.onclick = () => {
+                    messageInput.value = suggestion;
+                    messageInput.focus();
+                    sendMessage();
+                };
+                suggestionsDiv.appendChild(chip);
+            });
+
+            // Show suggestions with context
+            showSuggestions();
+        }
+
+        async function loadHistory() {
+            try {
+                const response = await fetch('http://localhost:9999/api/history', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+
+                    // Store session ID if provided
+                    if (data.session_id) {
+                        sessionId = data.session_id;
+                        localStorage.setItem(`jarvis_session_${user.username}`, sessionId);
+                    }
+
+                    // If there are messages, load them (smart display)
+                    if (data.messages && data.messages.length > 0) {
+                        // Remove welcome message
+                        const welcomeMsg = messagesDiv.querySelector('.welcome-message');
+                        if (welcomeMsg) {
+                            welcomeMsg.remove();
+                        }
+
+                        // Show only last 5 messages (not all history)
+                        const recentMessages = data.messages.slice(-5);
+                        const totalMessages = data.messages.length;
+
+                        // Add context message
+                        addContextMessage(totalMessages, recentMessages.length);
+
+                        // Add recent messages to the chat
+                        recentMessages.forEach(msg => {
+                            addMessage(msg.role, msg.content);
+                        });
+
+                        // Get last user query for context-aware suggestions
+                        const lastUserMessage = [...data.messages].reverse().find(m => m.role === 'user');
+                        if (lastUserMessage) {
+                            updateSuggestionsForContext(lastUserMessage.content);
+                        }
+
+                        console.log(`Loaded ${recentMessages.length} of ${totalMessages} messages`);
+                    }
+                } else if (response.status === 401) {
+                    // Session expired, redirect to login
+                    logout();
+                }
+            } catch (error) {
+                console.error('Failed to load history:', error);
+                // Don't show error to user - just start fresh
+            }
+        }
+
+        // Error Recovery: Retry with exponential backoff
+        async function sendMessageWithRetry(message, retryCount = 0, maxRetries = 3) {
+            const baseDelay = 1000; // 1 second
+            const delay = baseDelay * Math.pow(2, retryCount); // Exponential backoff
 
             try {
                 const response = await fetch('http://localhost:9999/api/chat', {
@@ -239,30 +658,127 @@
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify({
-                        message: message,
-                        session_id: sessionId,
-                        user_id: user.user_id
-                    })
+                    body: JSON.stringify({ message: message }),
+                    signal: AbortSignal.timeout(30000) // 30 second timeout
                 });
 
                 if (response.ok) {
                     const data = await response.json();
+
+                    // Store session ID for persistence
+                    if (data.session_id) {
+                        sessionId = data.session_id;
+                        localStorage.setItem(`jarvis_session_${user.username}`, sessionId);
+                    }
+
                     addMessage('assistant', data.response);
+                    updateSuggestionsForContext(message);
+                    return true;
+
                 } else if (response.status === 401) {
+                    // Authentication error - don't retry
                     addMessage('assistant', 'Session expired. Please login again.');
-                    setTimeout(() => {
-                        logout();
-                    }, 2000);
+                    setTimeout(() => logout(), 2000);
+                    return false;
+
+                } else if (response.status === 500) {
+                    // Server error - retry
+                    if (retryCount < maxRetries) {
+                        console.log(`Server error. Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        return sendMessageWithRetry(message, retryCount + 1, maxRetries);
+                    } else {
+                        addMessage('assistant', 'Server error. Please try again later or contact support.');
+                        return false;
+                    }
+
+                } else if (response.status === 503) {
+                    // Service unavailable - retry
+                    if (retryCount < maxRetries) {
+                        console.log(`Service unavailable. Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        return sendMessageWithRetry(message, retryCount + 1, maxRetries);
+                    } else {
+                        addMessage('assistant', 'Jarvis is temporarily unavailable. Please try again in a few moments.');
+                        return false;
+                    }
+
                 } else {
-                    addMessage('assistant', 'Error: Could not get response from Jarvis.');
+                    addMessage('assistant', `Error: Unexpected response (${response.status}). Please try again.`);
+                    return false;
                 }
+
             } catch (error) {
-                addMessage('assistant', 'Error: Cannot connect to Jarvis. Please ensure all services are running.');
+                // Network error - check if offline
+                if (!navigator.onLine) {
+                    addMessage('assistant', '⚠️ You appear to be offline. Please check your internet connection.');
+                    return false;
+                }
+
+                // Timeout or network error - retry
+                if (retryCount < maxRetries) {
+                    console.log(`Network error. Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return sendMessageWithRetry(message, retryCount + 1, maxRetries);
+                } else {
+                    addMessage('assistant', 'Unable to connect to Jarvis. Please check:\n• Web UI server is running (port 9999)\n• All agent servers are running\n• Registry service is running (port 8003)');
+                    return false;
+                }
             }
+        }
+
+        function showTypingIndicator() {
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'typing-indicator';
+            typingDiv.id = 'typingIndicator';
+            typingDiv.innerHTML = '<span></span><span></span><span></span>';
+            messagesDiv.appendChild(typingDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function hideTypingIndicator() {
+            const typingIndicator = document.getElementById('typingIndicator');
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
+        }
+
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            // Clear input
+            messageInput.value = '';
+
+            // Disable send button with loading animation
+            sendButton.disabled = true;
+            sendButton.classList.add('loading');
+            sendButton.textContent = 'Sending...';
+
+            // Clear welcome message if it's the first message
+            const welcomeMsg = messagesDiv.querySelector('.welcome-message');
+            if (welcomeMsg) {
+                welcomeMsg.remove();
+            }
+
+            // Hide suggestions once conversation starts
+            hideSuggestions();
+
+            // Add user message to chat
+            addMessage('user', message);
+
+            // Show typing indicator
+            showTypingIndicator();
+
+            // Send with retry logic
+            await sendMessageWithRetry(message);
+
+            // Hide typing indicator
+            hideTypingIndicator();
 
             // Re-enable send button
             sendButton.disabled = false;
+            sendButton.classList.remove('loading');
             sendButton.textContent = 'Send';
         }
 
@@ -272,11 +788,39 @@
 
             const label = document.createElement('div');
             label.className = 'message-label';
-            label.textContent = type === 'user' ? 'You' : 'Jarvis';
+
+            // Add sender name
+            const senderSpan = document.createElement('span');
+            senderSpan.textContent = type === 'user' ? 'You' : 'Jarvis';
+            label.appendChild(senderSpan);
+
+            // Add timestamp
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            const timestampSpan = document.createElement('span');
+            timestampSpan.className = 'timestamp';
+            timestampSpan.textContent = timeStr;
+            label.appendChild(timestampSpan);
 
             const textDiv = document.createElement('div');
             textDiv.className = 'message-text';
-            textDiv.textContent = text;
+
+            // Render markdown for assistant messages
+            if (type === 'assistant' && typeof marked !== 'undefined') {
+                // Configure marked for security
+                marked.setOptions({
+                    breaks: true,  // Convert \n to <br>
+                    gfm: true,     // GitHub Flavored Markdown
+                    headerIds: false,
+                    mangle: false
+                });
+                textDiv.innerHTML = marked.parse(text);
+            } else {
+                textDiv.textContent = text;
+            }
 
             messageDiv.appendChild(label);
             messageDiv.appendChild(textDiv);
@@ -286,6 +830,80 @@
             // Scroll to bottom
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
+
+        // Token Auto-Refresh
+        // Check token expiration and refresh if needed
+        function checkAndRefreshToken() {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+
+            try {
+                // Decode JWT to get expiration (JWT has 3 parts: header.payload.signature)
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const exp = payload.exp * 1000; // Convert to milliseconds
+                const now = Date.now();
+                const timeToExpiry = exp - now;
+
+                // Refresh if less than 5 minutes remaining (5 * 60 * 1000 ms)
+                if (timeToExpiry < 5 * 60 * 1000 && timeToExpiry > 0) {
+                    console.log(`Token expires in ${Math.floor(timeToExpiry / 60000)} minutes. Refreshing...`);
+                    refreshToken();
+                } else if (timeToExpiry <= 0) {
+                    console.log('Token expired. Logging out...');
+                    logout();
+                }
+            } catch (error) {
+                console.error('Failed to check token expiration:', error);
+            }
+        }
+
+        async function refreshToken() {
+            try {
+                const response = await fetch('http://localhost:9999/api/auth/refresh', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem('token', data.access_token);
+                    console.log('✓ Token refreshed successfully');
+                } else {
+                    console.error('Failed to refresh token. Logging out...');
+                    logout();
+                }
+            } catch (error) {
+                console.error('Error refreshing token:', error);
+            }
+        }
+
+        // Check token every minute
+        setInterval(checkAndRefreshToken, 60000);
+
+        // Check immediately on page load
+        checkAndRefreshToken();
+
+        // Network Status Monitoring
+        const networkStatus = document.getElementById('networkStatus');
+
+        function updateNetworkStatus() {
+            if (navigator.onLine) {
+                networkStatus.classList.remove('offline');
+                networkStatus.querySelector('span:last-child').textContent = 'Online';
+            } else {
+                networkStatus.classList.add('offline');
+                networkStatus.querySelector('span:last-child').textContent = 'Offline';
+            }
+        }
+
+        // Listen for online/offline events
+        window.addEventListener('online', updateNetworkStatus);
+        window.addEventListener('offline', updateNetworkStatus);
+
+        // Check initial status
+        updateNetworkStatus();
 
         function logout() {
             localStorage.removeItem('token');

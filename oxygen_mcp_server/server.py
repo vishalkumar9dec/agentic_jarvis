@@ -11,7 +11,6 @@ Public tools for viewing any user, authenticated tools for personal data.
 """
 
 from fastmcp import FastMCP
-from fastmcp.server.dependencies import get_http_headers
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import sys
@@ -19,8 +18,6 @@ import os
 
 # Add project root to Python path for auth imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from auth.jwt_utils import verify_jwt_token
 
 # =============================================================================
 # In-Memory Learning Database (Mock Data - Same as Phase 1)
@@ -58,8 +55,39 @@ LEARNING_DB: Dict[str, Dict[str, Any]] = {
 mcp = FastMCP("oxygen-server")
 
 
+# ============================================================================
+# Helper Function: Get Current Authenticated User
+# ============================================================================
+
+def get_current_user() -> Dict:
+    """
+    Get authenticated user from current request context.
+
+    This helper extracts user claims from the authenticated request.
+    Authentication middleware (added in app.py) populates request.user.
+
+    Returns:
+        Dict containing user claims:
+            - username: User's username
+            - user_id: Unique user identifier
+            - role: User's role (admin, developer, user)
+
+    Raises:
+        ValueError: If called from unauthenticated context
+    """
+    from fastmcp.server.dependencies import get_http_request
+
+    request = get_http_request()
+
+    # Check if user is authenticated
+    if not hasattr(request, 'user') or not request.user.is_authenticated:
+        raise ValueError("Authentication required")
+
+    return request.user.identity
+
+
 # =============================================================================
-# PUBLIC TOOLS (No Authentication - Phase 2A)
+# PUBLIC TOOLS (No Authentication)
 # =============================================================================
 # These tools accept username as a parameter.
 # Authenticated versions (get_my_*) will be added in Task 11.
@@ -359,16 +387,14 @@ def get_my_courses() -> Dict[str, Any]:
     This tool requires authentication via HTTP Authorization header.
     Returns course information for the currently authenticated user.
 
-    Authentication Flow (Task 13):
-    1. CLI sets bearer token in context: set_bearer_token(token)
-    2. McpToolset's header_provider injects: Authorization: Bearer <token>
-    3. FastMCP receives HTTP request with Authorization header
-    4. This tool extracts token using get_http_headers()
-    5. Token is validated and user's course data is returned
+    Authentication is handled automatically by FastMCP middleware:
+    1. Middleware extracts Bearer token from Authorization header
+    2. Validates token using JWTTokenVerifier
+    3. Returns 401 automatically if token is invalid/expired
+    4. Injects authenticated user into request.user
 
     Returns:
         Dict[str, Any]: Course information for authenticated user.
-            Returns error dict if authentication fails.
 
     Example (when authenticated as vishal):
         >>> # HTTP Request includes: Authorization: Bearer <valid_jwt>
@@ -376,46 +402,9 @@ def get_my_courses() -> Dict[str, Any]:
         >>> result['courses_enrolled']
         ['aws', 'terraform']
     """
-    # Extract bearer token from HTTP Authorization header
-    headers = get_http_headers()
-    auth_header = headers.get("authorization", "")
-
-    if not auth_header:
-        return {
-            "success": False,
-            "error": "Authentication required",
-            "status": 401,
-            "message": "Please log in to access your courses"
-        }
-
-    # Extract token from "Bearer <token>" format
-    if not auth_header.startswith("Bearer "):
-        return {
-            "success": False,
-            "error": "Invalid authorization header format",
-            "status": 401,
-            "message": "Authorization header must use Bearer scheme"
-        }
-
-    bearer_token = auth_header[7:]  # Remove "Bearer " prefix
-
-    # Validate token
-    payload = verify_jwt_token(bearer_token)
-    if not payload:
-        return {
-            "success": False,
-            "error": "Invalid or expired token",
-            "status": 401,
-            "message": "Your session has expired. Please log in again."
-        }
-
-    current_user = payload.get("username")
-    if not current_user:
-        return {
-            "success": False,
-            "error": "Token missing username claim",
-            "status": 401
-        }
+    # Get authenticated user from middleware
+    user = get_current_user()
+    current_user = user["username"]
 
     # Get user's courses
     username_lower = current_user.lower()
@@ -446,16 +435,10 @@ def get_my_exams() -> Dict[str, Any]:
     This tool requires authentication via HTTP Authorization header.
     Returns exam information with deadlines for the authenticated user.
 
-    Authentication Flow (Task 13):
-    1. CLI sets bearer token in context: set_bearer_token(token)
-    2. McpToolset's header_provider injects: Authorization: Bearer <token>
-    3. FastMCP receives HTTP request with Authorization header
-    4. This tool extracts token using get_http_headers()
-    5. Token is validated and user's exam data is returned
+    Authentication is handled automatically by FastMCP middleware.
 
     Returns:
         Dict[str, Any]: Exam information for authenticated user.
-            Returns error dict if authentication fails.
 
     Example (when authenticated as alex):
         >>> # HTTP Request includes: Authorization: Bearer <valid_jwt>
@@ -463,46 +446,9 @@ def get_my_exams() -> Dict[str, Any]:
         >>> result['total_pending']
         2
     """
-    # Extract bearer token from HTTP Authorization header
-    headers = get_http_headers()
-    auth_header = headers.get("authorization", "")
-
-    if not auth_header:
-        return {
-            "success": False,
-            "error": "Authentication required",
-            "status": 401,
-            "message": "Please log in to access your exams"
-        }
-
-    # Extract token from "Bearer <token>" format
-    if not auth_header.startswith("Bearer "):
-        return {
-            "success": False,
-            "error": "Invalid authorization header format",
-            "status": 401,
-            "message": "Authorization header must use Bearer scheme"
-        }
-
-    bearer_token = auth_header[7:]  # Remove "Bearer " prefix
-
-    # Validate token
-    payload = verify_jwt_token(bearer_token)
-    if not payload:
-        return {
-            "success": False,
-            "error": "Invalid or expired token",
-            "status": 401,
-            "message": "Your session has expired. Please log in again."
-        }
-
-    current_user = payload.get("username")
-    if not current_user:
-        return {
-            "success": False,
-            "error": "Token missing username claim",
-            "status": 401
-        }
+    # Get authenticated user from middleware
+    user = get_current_user()
+    current_user = user["username"]
 
     # Get user's exams
     username_lower = current_user.lower()
@@ -561,16 +507,10 @@ def get_my_preferences() -> Dict[str, Any]:
     This tool requires authentication via HTTP Authorization header.
     Returns learning interests and preferences for the authenticated user.
 
-    Authentication Flow (Task 13):
-    1. CLI sets bearer token in context: set_bearer_token(token)
-    2. McpToolset's header_provider injects: Authorization: Bearer <token>
-    3. FastMCP receives HTTP request with Authorization header
-    4. This tool extracts token using get_http_headers()
-    5. Token is validated and user's preferences are returned
+    Authentication is handled automatically by FastMCP middleware.
 
     Returns:
         Dict[str, Any]: Preferences for authenticated user.
-            Returns error dict if authentication fails.
 
     Example (when authenticated as vishal):
         >>> # HTTP Request includes: Authorization: Bearer <valid_jwt>
@@ -578,46 +518,9 @@ def get_my_preferences() -> Dict[str, Any]:
         >>> result['preferences']
         ['software engineering', 'cloud architecture']
     """
-    # Extract bearer token from HTTP Authorization header
-    headers = get_http_headers()
-    auth_header = headers.get("authorization", "")
-
-    if not auth_header:
-        return {
-            "success": False,
-            "error": "Authentication required",
-            "status": 401,
-            "message": "Please log in to access your preferences"
-        }
-
-    # Extract token from "Bearer <token>" format
-    if not auth_header.startswith("Bearer "):
-        return {
-            "success": False,
-            "error": "Invalid authorization header format",
-            "status": 401,
-            "message": "Authorization header must use Bearer scheme"
-        }
-
-    bearer_token = auth_header[7:]  # Remove "Bearer " prefix
-
-    # Validate token
-    payload = verify_jwt_token(bearer_token)
-    if not payload:
-        return {
-            "success": False,
-            "error": "Invalid or expired token",
-            "status": 401,
-            "message": "Your session has expired. Please log in again."
-        }
-
-    current_user = payload.get("username")
-    if not current_user:
-        return {
-            "success": False,
-            "error": "Token missing username claim",
-            "status": 401
-        }
+    # Get authenticated user from middleware
+    user = get_current_user()
+    current_user = user["username"]
 
     # Get user's preferences
     username_lower = current_user.lower()
@@ -645,16 +548,10 @@ def get_my_learning_summary() -> Dict[str, Any]:
     This tool requires authentication via HTTP Authorization header.
     Provides comprehensive overview of the authenticated user's learning progress.
 
-    Authentication Flow (Task 13):
-    1. CLI sets bearer token in context: set_bearer_token(token)
-    2. McpToolset's header_provider injects: Authorization: Bearer <token>
-    3. FastMCP receives HTTP request with Authorization header
-    4. This tool extracts token using get_http_headers()
-    5. Token is validated and user's learning summary is returned
+    Authentication is handled automatically by FastMCP middleware.
 
     Returns:
         Dict[str, Any]: Complete learning summary for authenticated user.
-            Returns error dict if authentication fails.
 
     Example (when authenticated as alex):
         >>> # HTTP Request includes: Authorization: Bearer <valid_jwt>
@@ -662,46 +559,9 @@ def get_my_learning_summary() -> Dict[str, Any]:
         >>> result['learning_summary']['overall_progress']['completion_rate']
         50.0
     """
-    # Extract bearer token from HTTP Authorization header
-    headers = get_http_headers()
-    auth_header = headers.get("authorization", "")
-
-    if not auth_header:
-        return {
-            "success": False,
-            "error": "Authentication required",
-            "status": 401,
-            "message": "Please log in to access your learning summary"
-        }
-
-    # Extract token from "Bearer <token>" format
-    if not auth_header.startswith("Bearer "):
-        return {
-            "success": False,
-            "error": "Invalid authorization header format",
-            "status": 401,
-            "message": "Authorization header must use Bearer scheme"
-        }
-
-    bearer_token = auth_header[7:]  # Remove "Bearer " prefix
-
-    # Validate token
-    payload = verify_jwt_token(bearer_token)
-    if not payload:
-        return {
-            "success": False,
-            "error": "Invalid or expired token",
-            "status": 401,
-            "message": "Your session has expired. Please log in again."
-        }
-
-    current_user = payload.get("username")
-    if not current_user:
-        return {
-            "success": False,
-            "error": "Token missing username claim",
-            "status": 401
-        }
+    # Get authenticated user from middleware
+    user = get_current_user()
+    current_user = user["username"]
 
     # Get user's learning data
     username_lower = current_user.lower()
