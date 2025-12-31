@@ -146,8 +146,9 @@
             <h3>Demo Accounts:</h3>
             <ul>
                 <li>• vishal / password123 (developer)</li>
+                <li>• happy / password123 (developer)</li>
                 <li>• alex / password123 (devops)</li>
-                <li>• sarah / password123 (data_scientist)</li>
+                <li>• admin / admin123 (admin - full access)</li>
             </ul>
         </div>
     </div>
@@ -181,9 +182,9 @@
 
                 const data = await response.json();
 
-                if (response.ok && data.success) {
+                if (response.ok && data.access_token) {
                     // Store token and user info
-                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('token', data.access_token);
                     localStorage.setItem('user', JSON.stringify(data.user));
 
                     // Redirect to chat

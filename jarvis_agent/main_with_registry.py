@@ -600,8 +600,52 @@ Now decompose the actual query above."""
         # Replace "me" with username
         query = re.sub(r'\bme\b', user_id, query, flags=re.IGNORECASE)
 
+        # If query doesn't contain the username yet, prepend "for {username}"
+        # This handles queries like "show pending exams" -> "show pending exams for vishal"
+        if user_id.lower() not in query.lower():
+            # Check if it's a command-style query (show, get, list, etc.)
+            command_patterns = [
+                r'^\s*(show|get|list|display|find|search|what|tell)',
+                r'^\s*(how many|count)',
+                r'^\s*(create|add|update|delete)'
+            ]
+
+            is_command_query = any(re.match(pattern, query, flags=re.IGNORECASE) for pattern in command_patterns)
+
+            if is_command_query:
+                # Add "for {username}" at the end
+                query = f"{query} for {user_id}"
+
         logger.debug(f"User context injected: '{query}' (user: {user_id}, role: {self.user_role})")
         return query
+
+    def _run_async_safe(self, coro):
+        """
+        Safely run an async coroutine, handling existing event loops.
+
+        If there's already a running event loop (e.g., from FastAPI),
+        run the coroutine in a new thread. Otherwise, use asyncio.run().
+
+        Args:
+            coro: Async coroutine to run
+
+        Returns:
+            Result of the coroutine
+        """
+        import asyncio
+        import concurrent.futures
+        import threading
+
+        try:
+            # Check if there's a running event loop
+            loop = asyncio.get_running_loop()
+            # There is a running loop, run in thread pool
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, coro)
+                return future.result()
+        except RuntimeError:
+            # No running loop, safe to use asyncio.run()
+            return asyncio.run(coro)
 
     def _invoke_agent(self, agent: LlmAgent, query: str) -> str:
         """
@@ -638,7 +682,7 @@ Now decompose the actual query above."""
                 session_id=session_id
             )
 
-        asyncio.run(create_session())
+        self._run_async_safe(create_session())
 
         # Create message content
         message = types.Content(
