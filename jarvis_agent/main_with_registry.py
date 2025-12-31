@@ -232,27 +232,45 @@ class JarvisOrchestrator:
 
     def get_or_create_session(self, user_id: str) -> str:
         """
-        Get existing session for user or create new one.
+        Get existing active session for user or create new one.
+
+        Implements session persistence across logins (Phase 2 Goal 4).
+        First checks cache, then queries registry for active sessions,
+        finally creates new session if none exists.
 
         Args:
             user_id: User identifier
 
         Returns:
-            Session ID
+            Session ID (existing or new)
 
         Example:
             >>> session_id = orchestrator.get_or_create_session("alice")
+            >>> # Will resume session if active, or create new one
         """
+        # Check cache first (in-memory, fast)
         if user_id in self._user_sessions:
             session_id = self._user_sessions[user_id]
 
-            # Verify session still exists
+            # Verify session still exists and is active
             session_data = self.session_client.get_session(session_id)
-            if session_data:
+            if session_data and session_data.get("status") == "active":
+                logger.info(f"Using cached session {session_id} for user {user_id}")
                 return session_id
 
-        # Create new session
-        return self.create_session(user_id)
+        # Check registry for active session (enables resumption after restart)
+        session_id = self.session_client.get_active_session_for_user(user_id)
+
+        if session_id:
+            # Found active session - cache it and resume
+            self._user_sessions[user_id] = session_id
+            logger.info(f"✓ Resuming active session {session_id} for user {user_id}")
+            return session_id
+
+        # No active session found - create new one
+        session_id = self.create_session(user_id)
+        logger.info(f"✓ Created new session {session_id} for user {user_id}")
+        return session_id
 
     def handle_query(
         self,
@@ -816,16 +834,41 @@ def main():
         print(f"ERROR: Invalid JWT token: {e}")
         sys.exit(1)
 
+    # Get or resume session
+    session_id = orchestrator.get_or_create_session(user_id)
+    session_data = orchestrator.session_client.get_session(session_id)
+
+    print()
+
+    if session_data:
+        history = session_data.get('conversation_history', [])
+
+        if len(history) > 0:
+            # Resuming existing session
+            print("=" * 80)
+            print(f"✓ Welcome back! Resuming session from {session_data['updated_at'][:16]}")
+            print(f"  Session ID: {session_id[:8]}...")
+            print(f"  Messages: {len(history)}")
+
+            # Show preview of last message
+            last_msg = history[-1]
+            preview = last_msg['content'][:70]
+            if len(last_msg['content']) > 70:
+                preview += "..."
+            print(f"  Last: {preview}")
+            print()
+            print("  Type /history to see full conversation")
+            print("=" * 80)
+        else:
+            # New session
+            print(f"✓ New session created: {session_id[:8]}...")
+
+    print()
     print("Jarvis is ready! Type your queries below.")
     print("Commands:")
     print("  /help    - Show help")
     print("  /history - Show conversation history")
     print("  /exit    - Exit")
-    print()
-
-    # Create or resume session
-    session_id = orchestrator.create_session(user_id)
-    print(f"Session: {session_id}")
     print()
 
     # Main loop

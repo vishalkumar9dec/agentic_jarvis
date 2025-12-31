@@ -462,6 +462,54 @@ class SessionClient:
 
         return session.get("last_agent_called")
 
+    def get_active_session_for_user(self, user_id: str) -> Optional[str]:
+        """
+        Get active session ID for a user.
+
+        Calls registry API to find user's most recent active session.
+        This enables session resumption across logins (Phase 2 Goal 4).
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Session ID if active session exists, None otherwise
+
+        Example:
+            >>> # Check if user has active session
+            >>> session_id = client.get_active_session_for_user("vishal")
+            >>> if session_id:
+            >>>     print(f"Resuming session: {session_id}")
+            >>> else:
+            >>>     print("Creating new session")
+        """
+        try:
+            response = self._session.get(
+                f"{self.base_url}/sessions/user/{user_id}/active",
+                timeout=self.timeout
+            )
+
+            if response.status_code == 404:
+                logger.info(f"No active session found for user {user_id}")
+                return None
+
+            if response.status_code == 200:
+                data = response.json()
+                session_id = data.get("session_id")
+
+                if session_id:
+                    logger.info(f"Found active session {session_id} for user {user_id}")
+                    return session_id
+
+            return None
+
+        except requests.ConnectionError:
+            logger.warning(f"Cannot reach session service to check for active session")
+            return None
+        except Exception as e:
+            logger.error(f"Error getting active session for {user_id}: {e}")
+            return None
+
     def health_check(self) -> bool:
         """
         Check if session service is healthy.

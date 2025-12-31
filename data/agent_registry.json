@@ -24,9 +24,9 @@
           "deadline"
         ],
         "keywords": [
-          "learning",
           "exam",
           "course",
+          "learning",
           "education"
         ],
         "examples": [],
@@ -35,11 +35,11 @@
       },
       "tags": [
         "a2a",
-        "production",
-        "core"
+        "core",
+        "production"
       ],
       "enabled": true,
-      "registered_at": "2025-12-30T16:00:50.098091+00:00",
+      "registered_at": "2025-12-31T08:13:10.821102+00:00",
       "agent_card_url": "http://localhost:8082/.well-known/agent-card.json",
       "status": "pending",
       "provider": {}
@@ -68,9 +68,9 @@
           "gitlab"
         ],
         "keywords": [
-          "IT",
+          "operation",
           "ticket",
-          "operation"
+          "IT"
         ],
         "examples": [],
         "requires_auth": false,
@@ -78,11 +78,11 @@
       },
       "tags": [
         "a2a",
-        "production",
-        "core"
+        "core",
+        "production"
       ],
       "enabled": true,
-      "registered_at": "2025-12-30T16:00:50.091553+00:00",
+      "registered_at": "2025-12-31T08:13:10.821131+00:00",
       "agent_card_url": "http://localhost:8080/.well-known/agent-card.json",
       "status": "pending",
       "provider": {}
@@ -112,10 +112,10 @@
         ],
         "keywords": [
           "gcp",
-          "cost",
-          "budget",
           "azure",
-          "aws"
+          "aws",
+          "budget",
+          "cost"
         ],
         "examples": [],
         "requires_auth": false,
@@ -123,16 +123,16 @@
       },
       "tags": [
         "a2a",
-        "production",
-        "core"
+        "core",
+        "production"
       ],
       "enabled": true,
-      "registered_at": "2025-12-30T16:00:50.095283+00:00",
+      "registered_at": "2025-12-31T08:13:10.821144+00:00",
       "agent_card_url": "http://localhost:8081/.well-known/agent-card.json",
       "status": "pending",
       "provider": {}
     }
   },
   "version": "1.0.0",
-  "last_updated": "2025-12-30T16:00:50.098103+00:00"
+  "last_updated": "2025-12-31T08:13:10.823138+00:00"
 }

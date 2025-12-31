@@ -2,80 +2,47 @@
   "agents": {
     "OxygenAgent": {
       "name": "OxygenAgent",
-      "description": "Learning and development platform agent that manages user courses, exams, and preferences",
-      "agent_type": "OxygenAgent",
+      "description": "Learning and development platform",
+      "agent_type": "oxygen",
       "type": "remote",
       "capabilities": {
         "domains": [
           "learning",
-          "education",
           "courses",
-          "training",
-          "development"
+          "exams",
+          "education"
         ],
         "operations": [
           "read",
-          "search",
-          "enroll",
-          "schedule",
-          "track"
+          "track",
+          "monitor"
         ],
         "entities": [
           "course",
           "exam",
-          "enrollment",
-          "user",
-          "deadline",
           "preference",
-          "progress",
-          "certification"
+          "deadline"
         ],
         "keywords": [
-          "preferences",
-          "completed",
-          "education",
-          "enrollment",
-          "oxygen",
-          "training",
-          "course",
-          "pending",
-          "deadline",
-          "enroll",
-          "exam",
           "learning",
-          "exams",
-          "preference",
-          "courses",
-          "upcoming",
-          "progress",
-          "certification"
+          "exam",
+          "course",
+          "education"
         ],
-        "examples": [
-          "show my courses",
-          "what exams do I have pending",
-          "show courses for alice",
-          "show learning summary",
-          "what are my learning preferences"
-        ],
+        "examples": [],
         "requires_auth": false,
         "priority": 7
       },
       "tags": [
         "a2a",
-        "third-party",
-        "learning",
-        "remote"
+        "production",
+        "core"
       ],
       "enabled": true,
-      "registered_at": "2025-12-30T16:00:41.584620+00:00",
-      "agent_card_url": "http://localhost:8002/.well-known/agent-card.json",
+      "registered_at": "2025-12-30T16:00:50.098091+00:00",
+      "agent_card_url": "http://localhost:8082/.well-known/agent-card.json",
       "status": "pending",
-      "provider": {
-        "name": "Oxygen Learning Platform",
-        "website": "http://localhost:8002",
-        "support_email": "support@oxygen.example.com",
-        "documentation": "http://localhost:8002/docs"
-      }
+      "provider": {}
     },
     "TicketsAgent": {
       "name": "TicketsAgent",
@@ -167,5 +134,5 @@
     }
   },
   "version": "1.0.0",
-  "last_updated": "2025-12-30T16:00:50.095300+00:00"
+  "last_updated": "2025-12-30T16:00:50.098103+00:00"
 }

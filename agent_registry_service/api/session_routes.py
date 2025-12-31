@@ -208,6 +208,139 @@ async def get_session(
         )
 
 
+@router.get(
+    "/user/{user_id}/active",
+    response_model=SessionResponse,
+    summary="Get active session for user",
+    description="Find the most recent active session for a user (enables session resumption)",
+    responses={
+        404: {"model": ErrorResponse, "description": "No active session found"}
+    }
+)
+async def get_active_session_for_user(
+    user_id: str,
+    session_manager: SessionManager = Depends(get_session_manager)
+) -> SessionResponse:
+    """
+    Get active session for a user.
+
+    Returns the most recent active session (updated within last 24 hours).
+    This enables session persistence across logins (Phase 2 Goal 4).
+
+    **Path Parameters:**
+    - `user_id`: User identifier
+
+    **Returns:**
+    - Session data if active session exists
+
+    **Raises:**
+    - 404: No active session found for user
+
+    **Example:**
+    ```
+    GET /sessions/user/vishal/active
+    ```
+    """
+    try:
+        # Import datetime for expiration check
+        from datetime import datetime, timedelta
+        from agent_registry_service.sessions.db_init import get_connection
+
+        # Query database for active sessions ordered by most recent
+        conn = get_connection(session_manager.db_path)
+        cursor = conn.cursor()
+
+        query = """
+            SELECT session_id, updated_at
+            FROM sessions
+            WHERE user_id = ? AND status = 'active'
+            ORDER BY updated_at DESC
+            LIMIT 1
+        """
+
+        result = cursor.execute(query, (user_id,)).fetchone()
+        conn.close()
+
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No active session found for user '{user_id}'"
+            )
+
+        session_id, updated_at = result
+
+        # Check if session is still valid (< 24 hours old)
+        updated = datetime.fromisoformat(updated_at)
+        now = datetime.now()
+
+        # Handle timezone-aware datetimes
+        if updated.tzinfo is not None:
+            from datetime import timezone as tz
+            now = datetime.now(tz.utc)
+
+        if now - updated > timedelta(hours=24):
+            # Session expired
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No active session found for user '{user_id}' (session expired)"
+            )
+
+        # Get full session data
+        session = session_manager.get_session(session_id)
+
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session data not found for '{session_id}'"
+            )
+
+        # Convert to response model (same as get_session endpoint)
+        conversation_history = [
+            ConversationMessage(
+                role=msg["role"],
+                content=msg["content"],
+                timestamp=msg["timestamp"]
+            )
+            for msg in session["conversation_history"]
+        ]
+
+        agents_invoked = [
+            AgentInvocation(
+                agent_name=inv["agent_name"],
+                query=inv["query"],
+                response=inv["response"],
+                success=bool(inv["success"]),
+                duration_ms=inv["duration_ms"],
+                error_message=inv["error_message"],
+                timestamp=inv["timestamp"]
+            )
+            for inv in session["agents_invoked"]
+        ]
+
+        logger.info(f"Found active session {session_id} for user {user_id}")
+
+        return SessionResponse(
+            session_id=session["session_id"],
+            user_id=session["user_id"],
+            created_at=session["created_at"],
+            updated_at=session["updated_at"],
+            status=session["status"],
+            metadata=session.get("metadata"),
+            conversation_history=conversation_history,
+            agents_invoked=agents_invoked,
+            last_agent_called=session.get("last_agent_called")
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting active session for {user_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve active session: {str(e)}"
+        )
+
+
 @router.post(
     "/{session_id}/invocations",
     response_model=SuccessResponse,
