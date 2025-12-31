@@ -18,39 +18,46 @@ Agentic Jarvis implements **role-based access control (RBAC)** to ensure users c
 
 ## Implementation Details
 
-### Query Rewriting
+### Access Control Enforcement
 
-The security is enforced at the orchestrator level via the `_inject_user_context()` method in `jarvis_agent/main_with_registry.py` (lines 532-603).
+The security is enforced at the orchestrator level via the `_inject_user_context()` method in `jarvis_agent/main_with_registry.py` (lines 532-597).
 
 **How It Works:**
 
-1. **User Context Injection**: Replaces pronouns ("my", "I", "me") with the authenticated username
-2. **Access Control**: If user is NOT admin, replaces any other username in the query with the authenticated user's username
-3. **Pattern Matching**: Uses regex to detect and replace usernames in various formats
+1. **Access Attempt Detection**: Checks if query contains another user's username
+2. **Permission Verification**: If non-admin user tries to access other user's data, raises PermissionError
+3. **User Context Injection**: For valid queries, replaces pronouns ("my", "I", "me") with the authenticated username
 
 **Example:**
 
 ```python
-# User: happy (role: developer)
+# User: happy (role: developer) - DENIED
 Original Query: "show vishal's tickets"
-Rewritten Query: "show happy's tickets"
-Result: Only happy's tickets are shown
+Result: PermissionError raised
+Response: "Access Denied: You do not have permission to view vishal's data.
+           You can only view your own data. If you need to access other users'
+           data, please contact your administrator."
 
-# User: admin (role: admin)
+# User: happy (role: developer) - ALLOWED
+Original Query: "show my tickets"
+Processed Query: "show happy's tickets"
+Result: happy's tickets are shown
+
+# User: admin (role: admin) - ALLOWED
 Original Query: "show vishal's tickets"
-Rewritten Query: "show vishal's tickets" (unchanged)
+Processed Query: "show vishal's tickets" (unchanged)
 Result: Vishal's tickets are shown (admin privilege)
 ```
 
 ### Known Users List
 
-The system maintains a list of known usernames to detect and replace:
+The system maintains a list of known usernames to detect unauthorized access attempts:
 
 ```python
 known_users = ["vishal", "happy", "alex", "sarah"]
 ```
 
-**Important**: When adding new users to the system, they should be added to this list in `main_with_registry.py:560` to ensure proper security enforcement.
+**Important**: When adding new users to the system, they should be added to this list in `main_with_registry.py:573` to ensure proper security enforcement. This list is used to detect when a non-admin user tries to access another user's data.
 
 ## User Roles
 
@@ -94,8 +101,9 @@ python /tmp/test_access_control.py
      -H "Content-Type: application/json" \
      -d '{"username": "happy", "password": "password123"}'
 
-   # Try to query vishal's tickets (will be rewritten to happy's)
-   # Result: Only happy's tickets shown
+   # Try to query vishal's tickets (will be DENIED with error)
+   # Query: "show vishal's tickets"
+   # Result: "Access Denied: You do not have permission to view vishal's data..."
    ```
 
 2. **Admin Can Access Any User's Data**
@@ -109,13 +117,13 @@ python /tmp/test_access_control.py
    # Result: Vishal's tickets shown
    ```
 
-3. **Query Variations Are Handled**
-   - "show vishal's tickets"
-   - "what are happy's courses"
-   - "tickets for alex"
-   - "list sarah courses"
+3. **Query Variations Are Properly Blocked**
+   - "show vishal's tickets" → Access Denied
+   - "what are happy's courses" → Access Denied
+   - "tickets for alex" → Access Denied
+   - "list sarah courses" → Access Denied
 
-   All variations are properly detected and rewritten.
+   All variations are properly detected and blocked with error messages.
 
 ## Security Best Practices
 

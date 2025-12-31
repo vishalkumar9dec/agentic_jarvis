@@ -346,7 +346,14 @@ class JarvisOrchestrator:
         logger.info(f"Selected {len(agents)} agents: {[a.name for a in agents]}")
 
         # Decompose query into agent-specific sub-queries with user context
-        sub_queries = self._decompose_query(query, agents, user_id=self.user_id)
+        try:
+            sub_queries = self._decompose_query(query, agents, user_id=self.user_id)
+        except PermissionError as e:
+            # User tried to access data they don't have permission for
+            error_message = str(e)
+            logger.warning(f"Permission denied for user {user_id}: {error_message}")
+            self.session_client.add_message(session_id, "assistant", error_message)
+            return error_message
 
         # Invoke agents and collect responses
         agent_responses = []
@@ -534,26 +541,28 @@ Now decompose the actual query above."""
         Inject user context into query and enforce access control.
 
         Security Features:
-        1. Replaces "my", "I", "me" with the authenticated username
-        2. Prevents access to other users' data (unless user is admin)
-        3. Replaces any other username with authenticated user's username
+        1. Checks if user is trying to access another user's data
+        2. Raises PermissionError if non-admin tries to access other user's data
+        3. Replaces "my", "I", "me" with the authenticated username
 
         Args:
             query: Original query string
             user_id: Authenticated user ID
 
         Returns:
-            Query with user context injected and access control enforced
+            Query with user context injected
+
+        Raises:
+            PermissionError: If non-admin user tries to access another user's data
 
         Example:
-            >>> # Regular user
+            >>> # Regular user trying to access other's data
             >>> query = "show vishal's tickets"
             >>> user_id = "happy"
             >>> result = self._inject_user_context(query, user_id)
-            >>> print(result)
-            "show happy's tickets"  # Enforced to only show happy's data
+            PermissionError: Access Denied: You do not have permission to view vishal's data...
 
-            >>> # Admin user
+            >>> # Admin user can access any data
             >>> query = "show vishal's tickets"
             >>> user_id = "admin"
             >>> result = self._inject_user_context(query, user_id)
@@ -565,6 +574,23 @@ Now decompose the actual query above."""
 
         import re
 
+        # SECURITY: Check if non-admin user is trying to access another user's data
+        if self.user_role and self.user_role.lower() != "admin":
+            # List of known users (expand as needed)
+            known_users = ["vishal", "happy", "alex", "sarah"]
+
+            # Check if query contains any other username
+            for other_user in known_users:
+                if other_user.lower() != user_id.lower():
+                    # Check for username in various forms
+                    if re.search(rf'\b{other_user}\b', query, flags=re.IGNORECASE):
+                        # Unauthorized access attempt detected
+                        raise PermissionError(
+                            f"Access Denied: You do not have permission to view {other_user}'s data. "
+                            f"You can only view your own data. If you need to access other users' data, "
+                            f"please contact your administrator."
+                        )
+
         # Replace possessive "my" with "username's"
         query = re.sub(r'\bmy\b', f"{user_id}'s", query, flags=re.IGNORECASE)
 
@@ -574,32 +600,7 @@ Now decompose the actual query above."""
         # Replace "me" with username
         query = re.sub(r'\bme\b', user_id, query, flags=re.IGNORECASE)
 
-        # SECURITY: Enforce user data access control
-        # Only admins can query other users' data
-        if self.user_role and self.user_role.lower() != "admin":
-            # List of known users (expand as needed)
-            known_users = ["vishal", "happy", "alex", "sarah"]
-
-            # Replace any other username with the authenticated user's username
-            for other_user in known_users:
-                if other_user.lower() != user_id.lower():
-                    # Replace username in various forms
-                    # "show vishal's tickets" -> "show happy's tickets"
-                    query = re.sub(
-                        rf'\b{other_user}\b',
-                        user_id,
-                        query,
-                        flags=re.IGNORECASE
-                    )
-                    # "tickets for vishal" -> "tickets for happy"
-                    query = re.sub(
-                        rf'\b{other_user}\'s\b',
-                        f"{user_id}'s",
-                        query,
-                        flags=re.IGNORECASE
-                    )
-
-        logger.debug(f"User context injected with access control: '{query}' (user: {user_id}, role: {self.user_role})")
+        logger.debug(f"User context injected: '{query}' (user: {user_id}, role: {self.user_role})")
         return query
 
     def _invoke_agent(self, agent: LlmAgent, query: str) -> str:
