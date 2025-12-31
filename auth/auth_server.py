@@ -14,7 +14,7 @@ import os
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from auth.jwt_utils import create_jwt_token
+from auth.jwt_utils import create_jwt_token, verify_jwt_token
 from auth.user_service import authenticate_user, get_user_info
 
 
@@ -29,11 +29,11 @@ class LoginRequest(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    """Login response model."""
-    success: bool
-    token: Optional[str] = None
+    """OAuth 2.0 compatible login response."""
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int = 86400  # 24 hours in seconds
     user: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
 
 
 class UserInfoResponse(BaseModel):
@@ -68,10 +68,12 @@ async def root():
     """Root endpoint."""
     return {
         "service": "Jarvis Authentication Service",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "status": "running",
+        "oauth_compatible": True,
         "endpoints": {
             "login": "POST /auth/login",
+            "verify": "GET /auth/verify",
             "health": "GET /health",
             "docs": "GET /docs"
         }
@@ -109,13 +111,46 @@ async def login(request: LoginRequest):
         )
 
     # Create JWT token
-    token = create_jwt_token(user["username"], user["user_id"])
+    token = create_jwt_token(user["username"], user["user_id"], user["role"])
 
+    # Return OAuth 2.0 compatible response
     return LoginResponse(
-        success=True,
-        token=token,
+        access_token=token,
+        token_type="bearer",
+        expires_in=86400,  # 24 hours
         user=user
     )
+
+
+@app.get("/auth/verify")
+async def verify_token_endpoint(token: str):
+    """
+    Verify JWT token and return payload.
+
+    Used by orchestrator to validate tokens.
+
+    Args:
+        token: JWT token to verify
+
+    Returns:
+        Token payload if valid
+
+    Raises:
+        HTTPException: 401 if token is invalid or expired
+    """
+    payload = verify_jwt_token(token)
+
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    return {
+        "valid": True,
+        "payload": payload
+    }
 
 
 @app.get("/auth/user/{username}", response_model=UserInfoResponse)
