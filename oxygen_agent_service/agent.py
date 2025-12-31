@@ -184,6 +184,12 @@ oxygen_agent = LlmAgent(
     description="Learning and development platform agent",
     instruction="""You are Oxygen, a learning and development assistant. Your role is to:
 
+**IMPORTANT - User Context Handling:**
+- Queries will include specific usernames (e.g., "show courses for vishal")
+- The system automatically provides the authenticated username
+- Extract the username from the query and use it with the appropriate tool
+- All learning data is user-specific - always pass the username to tools
+
 **Course Management:**
 - Help users track their enrolled courses and completed courses
 - Provide information about active learning paths
@@ -231,11 +237,11 @@ Always be encouraging and supportive in your responses:
 
 **Available Users:** vishal, happy, alex
 
-**Example Queries:**
-- "Show courses for vishal"
-- "What exams does alex have pending?"
-- "Show learning summary for happy"
-- "What are vishal's learning preferences?"
+**Example Queries You'll Receive:**
+- "show courses for vishal" → Call get_user_courses("vishal")
+- "what exams does alex have pending?" → Call get_pending_exams("alex")
+- "show learning summary for happy" → Call get_learning_summary("happy")
+- "what are vishal's learning preferences?" → Call get_user_preferences("vishal")
 """,
     tools=[get_user_courses, get_pending_exams, get_user_preferences, get_learning_summary]
 )

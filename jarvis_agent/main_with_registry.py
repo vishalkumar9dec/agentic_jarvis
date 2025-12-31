@@ -25,8 +25,8 @@ Usage:
 
     orchestrator = JarvisOrchestrator()
     response = orchestrator.handle_query(
-        user_id="alice",
-        query="show my tickets and courses"
+        query="show my tickets and courses",
+        user_id="alice"
     )
 """
 
@@ -35,6 +35,8 @@ import sys
 import logging
 import time
 import uuid
+import getpass
+import requests
 from typing import Dict, List, Optional
 
 # Add project root to Python path
@@ -92,8 +94,8 @@ class JarvisOrchestrator:
         >>>
         >>> # Handle single query
         >>> response = orchestrator.handle_query(
-        >>>     user_id="alice",
-        >>>     query="show my tickets and courses"
+        >>>     query="show my tickets and courses",
+        >>>     user_id="alice"
         >>> )
         >>> print(response)
         >>>
@@ -109,6 +111,7 @@ class JarvisOrchestrator:
 
     def __init__(
         self,
+        jwt_token: Optional[str] = None,
         registry_url: str = "http://localhost:8003",
         session_url: str = "http://localhost:8003",
         timeout: int = 10
@@ -117,11 +120,32 @@ class JarvisOrchestrator:
         Initialize Jarvis orchestrator.
 
         Args:
+            jwt_token: Optional JWT token for authentication (Phase 2)
             registry_url: URL of Agent Registry Service
             session_url: URL of Session Management Service
             timeout: Request timeout in seconds
+
+        Raises:
+            ValueError: If JWT token is invalid or expired
         """
         logger.info("Initializing Jarvis Orchestrator with Registry Service")
+
+        # Validate and decode JWT token (Phase 2)
+        if jwt_token:
+            self.jwt_token = jwt_token
+            self.user_info = self._validate_jwt(jwt_token)
+            # Use username for agent data compatibility (agents use username, not sub)
+            self.user_id = self.user_info.get("username") or self.user_info.get("sub")
+            self.user_role = self.user_info.get("role", "user")
+
+            logger.info(f"Authenticated user: {self.user_id} (role: {self.user_role})")
+        else:
+            # No authentication (backward compatibility)
+            self.jwt_token = None
+            self.user_info = None
+            self.user_id = None
+            self.user_role = None
+            logger.warning("No JWT token provided - running without authentication")
 
         # Initialize clients
         self.registry_client = RegistryClient(
@@ -148,6 +172,28 @@ class JarvisOrchestrator:
         self._verify_services()
 
         logger.info("Jarvis Orchestrator initialized successfully")
+
+    def _validate_jwt(self, token: str) -> dict:
+        """
+        Validate JWT token and return payload.
+
+        Args:
+            token: JWT token string
+
+        Returns:
+            Token payload dict
+
+        Raises:
+            ValueError: If token is invalid or expired
+        """
+        from auth.jwt_utils import verify_jwt_token
+
+        payload = verify_jwt_token(token)
+
+        if not payload:
+            raise ValueError("Invalid or expired JWT token")
+
+        return payload
 
     def _verify_services(self):
         """Verify registry and session services are healthy."""
@@ -210,8 +256,8 @@ class JarvisOrchestrator:
 
     def handle_query(
         self,
-        user_id: str,
         query: str,
+        user_id: Optional[str] = None,
         session_id: Optional[str] = None
     ) -> str:
         """
@@ -228,21 +274,30 @@ class JarvisOrchestrator:
         8. Return final response
 
         Args:
-            user_id: User identifier
             query: User query string
+            user_id: Optional user identifier (defaults to authenticated user from JWT)
             session_id: Optional session ID (creates new if None)
 
         Returns:
             Combined response string
 
         Example:
+            >>> # With JWT authentication
+            >>> response = orchestrator.handle_query("show my tickets")
+            >>>
+            >>> # Without JWT (legacy)
             >>> response = orchestrator.handle_query(
-            >>>     user_id="alice",
-            >>>     query="show my tickets and courses"
+            >>>     query="show my tickets",
+            >>>     user_id="alice"
             >>> )
-            >>> print(response)
         """
         start_time = time.time()
+
+        # Use authenticated user if not explicitly provided
+        if user_id is None:
+            if self.user_id is None:
+                raise ValueError("user_id must be provided when not authenticated with JWT")
+            user_id = self.user_id
 
         # Get or create session
         if not session_id:
@@ -272,8 +327,8 @@ class JarvisOrchestrator:
 
         logger.info(f"Selected {len(agents)} agents: {[a.name for a in agents]}")
 
-        # Decompose query into agent-specific sub-queries
-        sub_queries = self._decompose_query(query, agents)
+        # Decompose query into agent-specific sub-queries with user context
+        sub_queries = self._decompose_query(query, agents, user_id=self.user_id)
 
         # Invoke agents and collect responses
         agent_responses = []
@@ -343,28 +398,32 @@ class JarvisOrchestrator:
     def _decompose_query(
         self,
         original_query: str,
-        agents: List[LlmAgent]
+        agents: List[LlmAgent],
+        user_id: Optional[str] = None
     ) -> Dict[str, str]:
         """
-        Decompose a multi-agent query into agent-specific sub-queries.
+        Decompose a multi-agent query into agent-specific sub-queries with user context.
 
         Args:
             original_query: The original user query
             agents: List of agents to handle the query
+            user_id: Optional authenticated user ID for context injection
 
         Returns:
             Dict mapping agent names to their specific sub-queries
 
         Example:
-            Query: "show all tickets and aws cost"
+            Query: "show my tickets and aws cost"
+            User: "vishal"
             Returns: {
-                "TicketsAgent": "show all tickets",
+                "TicketsAgent": "show tickets for vishal",
                 "FinOpsAgent": "show aws cost"
             }
         """
-        # If only one agent, return original query
+        # If only one agent, inject user context and return
         if len(agents) == 1:
-            return {agents[0].name: original_query}
+            query = self._inject_user_context(original_query, user_id) if user_id else original_query
+            return {agents[0].name: query}
 
         # Use LLM to decompose query
         from google import genai
@@ -384,8 +443,18 @@ class JarvisOrchestrator:
                 f"- {agent.name}: {agent.description}"
             )
 
+        # Build user context section
+        user_context = f"""
+Authenticated User: {user_id}
+
+IMPORTANT - User Context Injection:
+- Replace "my", "I", "me" with the specific username: "{user_id}"
+- Make each sub-query explicit about which user's data to retrieve
+""" if user_id else ""
+
         prompt = f"""Given a user query and multiple specialized agents, break down the query into agent-specific sub-queries.
 
+{user_context}
 User Query: "{original_query}"
 
 Available Agents:
@@ -399,14 +468,25 @@ Important:
 - Remove parts that the agent cannot handle
 - Keep the sub-query natural and conversational
 - If an agent can handle the entire query, use the full query
+- Replace possessive pronouns (my, I, me) with the authenticated username
 
-Example:
+Example 1 (without user context):
 Query: "show all tickets and aws cost"
 Agents: TicketsAgent (IT operations), FinOpsAgent (cloud costs)
 Output:
 {{
     "TicketsAgent": "show all tickets",
     "FinOpsAgent": "show aws cost"
+}}
+
+Example 2 (with user context):
+User: vishal
+Query: "show my tickets and courses"
+Agents: TicketsAgent (IT operations), OxygenAgent (learning platform)
+Output:
+{{
+    "TicketsAgent": "show tickets for vishal",
+    "OxygenAgent": "show courses for vishal"
 }}
 
 Now decompose the actual query above."""
@@ -430,6 +510,44 @@ Now decompose the actual query above."""
             logger.error(f"Failed to decompose query: {e}")
             # Fallback: use original query
             return {agent.name: original_query for agent in agents}
+
+    def _inject_user_context(self, query: str, user_id: Optional[str]) -> str:
+        """
+        Inject user context into query by replacing possessive pronouns.
+
+        Replaces "my", "I", "me" with the specific username to make
+        queries explicit about which user's data to retrieve.
+
+        Args:
+            query: Original query string
+            user_id: Authenticated user ID
+
+        Returns:
+            Query with user context injected
+
+        Example:
+            >>> query = "show my tickets"
+            >>> user_id = "vishal"
+            >>> result = self._inject_user_context(query, user_id)
+            >>> print(result)
+            "show vishal's tickets"
+        """
+        if not user_id:
+            return query
+
+        import re
+
+        # Replace possessive "my" with "username's"
+        query = re.sub(r'\bmy\b', f"{user_id}'s", query, flags=re.IGNORECASE)
+
+        # Replace "I" at word boundaries with username
+        query = re.sub(r'\bI\b', user_id, query)
+
+        # Replace "me" with username
+        query = re.sub(r'\bme\b', user_id, query, flags=re.IGNORECASE)
+
+        logger.debug(f"User context injected: '{query}' (user: {user_id})")
+        return query
 
     def _invoke_agent(self, agent: LlmAgent, query: str) -> str:
         """
@@ -565,7 +683,7 @@ Now decompose the actual query above."""
             raise ValueError(f"Session {session_id} not found")
 
         user_id = session_data["user_id"]
-        return self.handle_query(user_id, query, session_id)
+        return self.handle_query(query, user_id=user_id, session_id=session_id)
 
     def get_session_history(self, session_id: str) -> List[Dict]:
         """
@@ -613,6 +731,60 @@ Now decompose the actual query above."""
 # CLI Interface
 # =============================================================================
 
+def authenticate_user() -> tuple[str, str]:
+    """
+    Authenticate user and return JWT token + user_id.
+
+    Returns:
+        (jwt_token, user_id)
+
+    Raises:
+        SystemExit: If authentication fails
+    """
+    print("=" * 80)
+    print("Jarvis Authentication")
+    print("=" * 80)
+    print()
+
+    # Get credentials
+    username = input("Username: ").strip()
+    password = getpass.getpass("Password: ")
+
+    # Call auth service
+    auth_url = os.getenv("AUTH_SERVICE_URL", "http://localhost:9998")
+
+    try:
+        response = requests.post(
+            f"{auth_url}/auth/login",
+            json={"username": username, "password": password},
+            timeout=10
+        )
+
+        if response.status_code == 401:
+            print("✗ Authentication failed: Invalid username or password")
+            sys.exit(1)
+
+        response.raise_for_status()
+
+        data = response.json()
+        jwt_token = data["access_token"]  # OAuth standard format
+        user_info = data["user"]
+
+        print(f"✓ Authenticated as {user_info['username']} ({user_info['role']})")
+        print()
+
+        return jwt_token, user_info["username"]
+
+    except requests.ConnectionError:
+        print(f"✗ Auth service not available at {auth_url}")
+        print("  Start it with: python -m auth.auth_server")
+        sys.exit(1)
+    except Exception as e:
+        print(f"✗ Authentication error: {e}")
+        logger.exception("Authentication failed")
+        sys.exit(1)
+
+
 def main():
     """
     Main CLI interface for Jarvis.
@@ -631,11 +803,17 @@ def main():
         print("Please set it with: export GOOGLE_API_KEY=your_api_key")
         sys.exit(1)
 
-    # Initialize orchestrator
+    # Authenticate user
+    jwt_token, user_id = authenticate_user()
+
+    # Initialize orchestrator with JWT
     try:
-        orchestrator = JarvisOrchestrator()
+        orchestrator = JarvisOrchestrator(jwt_token=jwt_token)
     except ConnectionError as e:
         print(f"ERROR: {e}")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"ERROR: Invalid JWT token: {e}")
         sys.exit(1)
 
     print("Jarvis is ready! Type your queries below.")
@@ -645,14 +823,9 @@ def main():
     print("  /exit    - Exit")
     print()
 
-    # Get user ID
-    user_id = input("Enter your username: ").strip()
-    if not user_id:
-        user_id = "guest"
-
-    # Create session
+    # Create or resume session
     session_id = orchestrator.create_session(user_id)
-    print(f"Session created: {session_id}")
+    print(f"Session: {session_id}")
     print()
 
     # Main loop

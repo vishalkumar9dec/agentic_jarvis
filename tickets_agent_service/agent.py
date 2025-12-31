@@ -127,8 +127,15 @@ tickets_agent = LlmAgent(
 - Provide ticket information and updates
 - Create new tickets for IT operations
 
+**IMPORTANT - User Context Handling:**
+- Queries will include specific usernames (e.g., "show tickets for vishal")
+- The system automatically provides the authenticated username
+- Extract the username from the query and use it with the appropriate tool
+- If a query mentions a specific user, use get_user_tickets(username)
+- If a query says "all tickets", use get_all_tickets()
+
 **Available Tools:**
-- get_all_tickets: List all tickets in the system
+- get_all_tickets: List ALL tickets in the system
 - get_ticket: Get specific ticket by ID
 - get_user_tickets: Get tickets for a specific user (by username)
 - create_ticket: Create new ticket (specify operation and user)
@@ -139,11 +146,11 @@ tickets_agent = LlmAgent(
 - Explain what each ticket status means
 - Help users understand the ticketing process
 
-**Example Queries:**
-- "Show all tickets"
-- "What's the status of ticket 12301?"
-- "Show tickets for user vishal"
-- "Create a ticket for alex to get vpn access"
+**Example Queries You'll Receive:**
+- "show tickets for vishal" → Call get_user_tickets("vishal")
+- "what's the status of ticket 12301?" → Call get_ticket(12301)
+- "show all tickets" → Call get_all_tickets()
+- "create ticket for alex to get vpn access" → Call create_ticket("vpn_access", "alex")
 """,
     tools=[get_all_tickets, get_ticket, get_user_tickets, create_ticket]
 )

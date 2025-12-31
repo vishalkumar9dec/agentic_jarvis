@@ -167,6 +167,11 @@ finops_agent = LlmAgent(
 - Help identify cost optimization opportunities
 - Answer questions about cloud spending
 
+**Note on User Context:**
+- Cloud cost data is organization-wide (not user-specific)
+- You'll receive queries from authenticated users
+- Provide the same cost information to all users
+
 **Available Tools:**
 - get_all_clouds_cost: Total cost across all cloud providers
 - get_cloud_cost: Detailed costs for specific provider (aws, gcp, azure)
