@@ -16,19 +16,33 @@ USERS_DB = {
         "role": "developer",
         "email": "vishal@company.com"
     },
-    "alex": {
+    "happy": {
         "user_id": "user_002",
+        "username": "happy",
+        "password_hash": hashlib.sha256("password123".encode()).hexdigest(),
+        "role": "developer",
+        "email": "happy@company.com"
+    },
+    "alex": {
+        "user_id": "user_003",
         "username": "alex",
         "password_hash": hashlib.sha256("password123".encode()).hexdigest(),
         "role": "devops",
         "email": "alex@company.com"
     },
     "sarah": {
-        "user_id": "user_003",
+        "user_id": "user_004",
         "username": "sarah",
         "password_hash": hashlib.sha256("password123".encode()).hexdigest(),
         "role": "data_scientist",
         "email": "sarah@company.com"
+    },
+    "admin": {
+        "user_id": "user_admin",
+        "username": "admin",
+        "password_hash": hashlib.sha256("admin123".encode()).hexdigest(),
+        "role": "admin",
+        "email": "admin@company.com"
     }
 }
 

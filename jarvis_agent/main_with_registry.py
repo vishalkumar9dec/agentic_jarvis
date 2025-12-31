@@ -531,24 +531,34 @@ Now decompose the actual query above."""
 
     def _inject_user_context(self, query: str, user_id: Optional[str]) -> str:
         """
-        Inject user context into query by replacing possessive pronouns.
+        Inject user context into query and enforce access control.
 
-        Replaces "my", "I", "me" with the specific username to make
-        queries explicit about which user's data to retrieve.
+        Security Features:
+        1. Replaces "my", "I", "me" with the authenticated username
+        2. Prevents access to other users' data (unless user is admin)
+        3. Replaces any other username with authenticated user's username
 
         Args:
             query: Original query string
             user_id: Authenticated user ID
 
         Returns:
-            Query with user context injected
+            Query with user context injected and access control enforced
 
         Example:
-            >>> query = "show my tickets"
-            >>> user_id = "vishal"
+            >>> # Regular user
+            >>> query = "show vishal's tickets"
+            >>> user_id = "happy"
             >>> result = self._inject_user_context(query, user_id)
             >>> print(result)
-            "show vishal's tickets"
+            "show happy's tickets"  # Enforced to only show happy's data
+
+            >>> # Admin user
+            >>> query = "show vishal's tickets"
+            >>> user_id = "admin"
+            >>> result = self._inject_user_context(query, user_id)
+            >>> print(result)
+            "show vishal's tickets"  # Admins can see any user's data
         """
         if not user_id:
             return query
@@ -564,7 +574,32 @@ Now decompose the actual query above."""
         # Replace "me" with username
         query = re.sub(r'\bme\b', user_id, query, flags=re.IGNORECASE)
 
-        logger.debug(f"User context injected: '{query}' (user: {user_id})")
+        # SECURITY: Enforce user data access control
+        # Only admins can query other users' data
+        if self.user_role and self.user_role.lower() != "admin":
+            # List of known users (expand as needed)
+            known_users = ["vishal", "happy", "alex", "sarah"]
+
+            # Replace any other username with the authenticated user's username
+            for other_user in known_users:
+                if other_user.lower() != user_id.lower():
+                    # Replace username in various forms
+                    # "show vishal's tickets" -> "show happy's tickets"
+                    query = re.sub(
+                        rf'\b{other_user}\b',
+                        user_id,
+                        query,
+                        flags=re.IGNORECASE
+                    )
+                    # "tickets for vishal" -> "tickets for happy"
+                    query = re.sub(
+                        rf'\b{other_user}\'s\b',
+                        f"{user_id}'s",
+                        query,
+                        flags=re.IGNORECASE
+                    )
+
+        logger.debug(f"User context injected with access control: '{query}' (user: {user_id}, role: {self.user_role})")
         return query
 
     def _invoke_agent(self, agent: LlmAgent, query: str) -> str:
