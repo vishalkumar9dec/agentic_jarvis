@@ -312,6 +312,134 @@
             display: none;
         }
 
+        /* Session Management Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .close-btn:hover {
+            color: #333;
+        }
+
+        .session-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .session-item {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .session-item.active-session {
+            border-color: #4CAF50;
+            background-color: #f0f9f0;
+        }
+
+        .session-info {
+            flex: 1;
+        }
+
+        .session-id {
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .session-meta {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        .session-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .session-actions button {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .session-actions button:hover {
+            background-color: #f0f0f0;
+        }
+
+        .session-actions button.delete-btn {
+            color: #f44336;
+            border-color: #f44336;
+        }
+
+        .session-actions button.delete-btn:hover {
+            background-color: #ffebee;
+        }
+
+        .sessions-btn {
+            background-color: white;
+            color: #4CAF50;
+            border: 1px solid white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .sessions-btn:hover {
+            background-color: #f0f0f0;
+        }
+
         /* Loading animations */
         .typing-indicator {
             display: flex;
@@ -404,7 +532,21 @@
                 <span class="dot"></span>
                 <span>Online</span>
             </span>
+            <button class="sessions-btn" onclick="openSessionsModal()">Sessions</button>
             <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+    </div>
+
+    <!-- Sessions Management Modal -->
+    <div id="sessionsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>My Sessions</h2>
+                <button class="close-btn" onclick="closeSessionsModal()">&times;</button>
+            </div>
+            <ul class="session-list" id="sessionList">
+                <li style="text-align: center; color: #999;">Loading sessions...</li>
+            </ul>
         </div>
     </div>
 
@@ -455,20 +597,8 @@
         // Load conversation history on page load
         loadHistory();
 
-        // Suggestion chips
-        const suggestionChips = [
-            "show my tickets",
-            "show my courses",
-            "show my pending exams",
-            "show AWS cost",
-            "show GCP cost",
-            "show all tickets",
-            "show my tickets and pending exams",
-            "what are my upcoming deadlines"
-        ];
-
-        // Initialize suggestions
-        renderSuggestions();
+        // Conversation messages for suggestions
+        let conversationMessages = [];
 
         // Handle Enter key
         messageInput.addEventListener('keypress', (e) => {
@@ -477,11 +607,22 @@
             }
         });
 
-        function renderSuggestions() {
+        function renderSuggestions(suggestions) {
             const suggestionsDiv = document.getElementById('suggestions');
             suggestionsDiv.innerHTML = '';
 
-            suggestionChips.forEach(suggestion => {
+            if (!suggestions || suggestions.length === 0) {
+                // Default suggestions
+                suggestions = [
+                    "show my tickets",
+                    "show my courses",
+                    "show my pending exams",
+                    "show AWS cost",
+                    "show GCP cost"
+                ];
+            }
+
+            suggestions.forEach(suggestion => {
                 const chip = document.createElement('button');
                 chip.className = 'suggestion-chip';
                 chip.textContent = suggestion;
@@ -526,68 +667,46 @@
             messagesDiv.appendChild(contextDiv);
         }
 
-        function updateSuggestionsForContext(lastQuery) {
-            const query = lastQuery.toLowerCase();
+        async function fetchSuggestions(broadcast = false) {
+            try {
+                // Call LLM-powered suggestions endpoint
+                const response = await fetch('http://localhost:9999/api/suggestions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        conversation_history: conversationMessages
+                    })
+                });
 
-            let contextualChips = [];
+                if (response.ok) {
+                    const data = await response.json();
+                    renderSuggestions(data.suggestions);
+                    showSuggestions();
 
-            // Determine context from last query
-            if (query.includes('ticket')) {
-                contextualChips = [
-                    "create new ticket",
-                    "show pending tickets",
-                    "show completed tickets",
-                    "show all tickets"
-                ];
-            } else if (query.includes('course') || query.includes('learning')) {
-                contextualChips = [
-                    "show pending exams",
-                    "show course progress",
-                    "show upcoming deadlines",
-                    "enroll in new course"
-                ];
-            } else if (query.includes('exam')) {
-                contextualChips = [
-                    "show my courses",
-                    "show exam schedule",
-                    "show upcoming deadlines",
-                    "show completed courses"
-                ];
-            } else if (query.includes('cost') || query.includes('spend') || query.includes('aws') || query.includes('gcp')) {
-                contextualChips = [
-                    "show GCP cost",
-                    "show AWS cost",
-                    "show Azure cost",
-                    "cost breakdown by service"
-                ];
-            } else {
-                // Default suggestions
-                contextualChips = [
-                    "show my tickets",
-                    "show my courses",
-                    "show my pending exams",
-                    "show cloud costs"
-                ];
+                    // Broadcast suggestions to other tabs if requested
+                    if (broadcast) {
+                        broadcastSuggestions(data.suggestions);
+                    }
+
+                    return data.suggestions;
+                } else {
+                    // Fallback to default suggestions on error
+                    const defaultSuggestions = [];
+                    renderSuggestions(defaultSuggestions);
+                    showSuggestions();
+                    return defaultSuggestions;
+                }
+            } catch (error) {
+                console.error('Failed to fetch suggestions:', error);
+                // Fallback to default suggestions
+                const defaultSuggestions = [];
+                renderSuggestions(defaultSuggestions);
+                showSuggestions();
+                return defaultSuggestions;
             }
-
-            // Update suggestion chips with context-aware ones
-            const suggestionsDiv = document.getElementById('suggestions');
-            suggestionsDiv.innerHTML = '';
-
-            contextualChips.forEach(suggestion => {
-                const chip = document.createElement('button');
-                chip.className = 'suggestion-chip';
-                chip.textContent = suggestion;
-                chip.onclick = () => {
-                    messageInput.value = suggestion;
-                    messageInput.focus();
-                    sendMessage();
-                };
-                suggestionsDiv.appendChild(chip);
-            });
-
-            // Show suggestions with context
-            showSuggestions();
         }
 
         async function loadHistory() {
@@ -628,13 +747,19 @@
                             addMessage(msg.role, msg.content);
                         });
 
-                        // Get last user query for context-aware suggestions
-                        const lastUserMessage = [...data.messages].reverse().find(m => m.role === 'user');
-                        if (lastUserMessage) {
-                            updateSuggestionsForContext(lastUserMessage.content);
-                        }
+                        // Store conversation messages for LLM suggestions
+                        conversationMessages = data.messages.map(m => ({
+                            role: m.role,
+                            content: m.content
+                        }));
+
+                        // Fetch AI-powered suggestions based on conversation
+                        fetchSuggestions();
 
                         console.log(`Loaded ${recentMessages.length} of ${totalMessages} messages`);
+                    } else {
+                        // No history - fetch default suggestions
+                        fetchSuggestions();
                     }
                 } else if (response.status === 401) {
                     // Session expired, redirect to login
@@ -643,6 +768,8 @@
             } catch (error) {
                 console.error('Failed to load history:', error);
                 // Don't show error to user - just start fresh
+                // Fetch default suggestions for first-time users
+                fetchSuggestions();
             }
         }
 
@@ -671,8 +798,20 @@
                         localStorage.setItem(`jarvis_session_${user.username}`, sessionId);
                     }
 
+                    // Add assistant message to conversation history
+                    conversationMessages.push({
+                        role: 'assistant',
+                        content: data.response
+                    });
+
                     addMessage('assistant', data.response);
-                    updateSuggestionsForContext(message);
+
+                    // Fetch AI-powered suggestions based on updated conversation
+                    const suggestions = await fetchSuggestions(true);
+
+                    // Broadcast assistant message with suggestions to other tabs
+                    broadcastMessage('assistant', data.response, suggestions);
+
                     return true;
 
                 } else if (response.status === 401) {
@@ -766,6 +905,15 @@
 
             // Add user message to chat
             addMessage('user', message);
+
+            // Add user message to conversation history for suggestions
+            conversationMessages.push({
+                role: 'user',
+                content: message
+            });
+
+            // Broadcast user message to other tabs
+            broadcastMessage('user', message);
 
             // Show typing indicator
             showTypingIndicator();
@@ -905,10 +1053,235 @@
         // Check initial status
         updateNetworkStatus();
 
+        // ====================================================================
+        // Session Sync Across Tabs
+        // ====================================================================
+
+        // Create BroadcastChannel for cross-tab communication
+        const syncChannel = new BroadcastChannel('jarvis_sync');
+
+        // Listen for messages from other tabs
+        syncChannel.onmessage = (event) => {
+            const { type, data } = event.data;
+
+            switch (type) {
+                case 'new_message':
+                    // Another tab sent a message - update UI
+                    if (data.role === 'user') {
+                        addMessage('user', data.content);
+                        conversationMessages.push({
+                            role: 'user',
+                            content: data.content
+                        });
+                    } else if (data.role === 'assistant') {
+                        addMessage('assistant', data.content);
+                        conversationMessages.push({
+                            role: 'assistant',
+                            content: data.content
+                        });
+                        // Update suggestions
+                        if (data.suggestions) {
+                            renderSuggestions(data.suggestions);
+                            showSuggestions();
+                        }
+                    }
+                    break;
+
+                case 'logout':
+                    // Another tab logged out - sync logout
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                    window.location.href = '/login.html';
+                    break;
+
+                case 'suggestions_updated':
+                    // Another tab got new suggestions
+                    renderSuggestions(data.suggestions);
+                    showSuggestions();
+                    break;
+            }
+        };
+
+        // Broadcast new messages to other tabs
+        function broadcastMessage(role, content, suggestions = null) {
+            syncChannel.postMessage({
+                type: 'new_message',
+                data: { role, content, suggestions }
+            });
+        }
+
+        // Broadcast logout to other tabs
+        function broadcastLogout() {
+            syncChannel.postMessage({
+                type: 'logout'
+            });
+        }
+
+        // Broadcast suggestions update to other tabs
+        function broadcastSuggestions(suggestions) {
+            syncChannel.postMessage({
+                type: 'suggestions_updated',
+                data: { suggestions }
+            });
+        }
+
         function logout() {
+            broadcastLogout();
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             window.location.href = '/login.html';
+        }
+
+        // ====================================================================
+        // Session Management Functions
+        // ====================================================================
+
+        async function openSessionsModal() {
+            const modal = document.getElementById('sessionsModal');
+            modal.classList.add('active');
+            await loadSessionsList();
+        }
+
+        function closeSessionsModal() {
+            const modal = document.getElementById('sessionsModal');
+            modal.classList.remove('active');
+        }
+
+        async function loadSessionsList() {
+            const sessionList = document.getElementById('sessionList');
+            sessionList.innerHTML = '<li style="text-align: center; color: #999;">Loading sessions...</li>';
+
+            try {
+                const response = await fetch('http://localhost:9999/api/sessions', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const sessions = data.sessions || [];
+
+                    if (sessions.length === 0) {
+                        sessionList.innerHTML = '<li style="text-align: center; color: #999;">No sessions found</li>';
+                        return;
+                    }
+
+                    // Clear loading message
+                    sessionList.innerHTML = '';
+
+                    // Render each session
+                    sessions.forEach(session => {
+                        const li = document.createElement('li');
+                        li.className = 'session-item';
+
+                        // Highlight current session
+                        if (session.session_id === sessionId) {
+                            li.classList.add('active-session');
+                        }
+
+                        // Format dates
+                        const updatedDate = new Date(session.updated_at);
+                        const timeAgo = getTimeAgo(updatedDate);
+
+                        li.innerHTML = `
+                            <div class="session-info">
+                                <div class="session-id">${session.session_id.substring(0, 20)}...</div>
+                                <div class="session-meta">
+                                    ${session.message_count} messages • Updated ${timeAgo}
+                                    ${session.session_id === sessionId ? ' • <strong>Active</strong>' : ''}
+                                </div>
+                            </div>
+                            <div class="session-actions">
+                                ${session.session_id !== sessionId ?
+                                    `<button onclick="switchToSession('${session.session_id}')">Switch</button>` : ''}
+                                <button class="delete-btn" onclick="deleteSessionConfirm('${session.session_id}')">Delete</button>
+                            </div>
+                        `;
+
+                        sessionList.appendChild(li);
+                    });
+
+                } else {
+                    sessionList.innerHTML = '<li style="text-align: center; color: #f44336;">Failed to load sessions</li>';
+                }
+            } catch (error) {
+                console.error('Error loading sessions:', error);
+                sessionList.innerHTML = '<li style="text-align: center; color: #f44336;">Error loading sessions</li>';
+            }
+        }
+
+        function getTimeAgo(date) {
+            const now = new Date();
+            const seconds = Math.floor((now - date) / 1000);
+
+            if (seconds < 60) return 'just now';
+            if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+            if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
+            if (seconds < 604800) return `${Math.floor(seconds / 86400)} days ago`;
+            return date.toLocaleDateString();
+        }
+
+        async function deleteSessionConfirm(sessionIdToDelete) {
+            if (!confirm('Are you sure you want to delete this session? This cannot be undone.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`http://localhost:9999/api/sessions/${sessionIdToDelete}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    // If deleting current session, reload page
+                    if (sessionIdToDelete === sessionId) {
+                        alert('Current session deleted. Starting new session...');
+                        window.location.reload();
+                    } else {
+                        // Reload sessions list
+                        await loadSessionsList();
+                    }
+                } else {
+                    alert('Failed to delete session. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error deleting session:', error);
+                alert('Error deleting session. Please try again.');
+            }
+        }
+
+        async function switchToSession(newSessionId) {
+            try {
+                const response = await fetch(`http://localhost:9999/api/sessions/switch/${newSessionId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    // Session switched successfully - reload page
+                    localStorage.setItem(`jarvis_session_${user.username}`, newSessionId);
+                    window.location.reload();
+                } else {
+                    alert('Failed to switch session. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error switching session:', error);
+                alert('Error switching session. Please try again.');
+            }
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('sessionsModal');
+            if (event.target === modal) {
+                closeSessionsModal();
+            }
         }
     </script>
 </body>

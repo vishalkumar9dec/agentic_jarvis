@@ -125,6 +125,81 @@ async def create_session(
 
 
 @router.get(
+    "",
+    summary="List sessions",
+    description="List all sessions, optionally filtered by user_id",
+)
+async def list_sessions(
+    user_id: Optional[str] = None,
+    session_manager: SessionManager = Depends(get_session_manager)
+):
+    """
+    List sessions.
+
+    **Query Parameters:**
+    - `user_id`: Filter sessions by user ID (optional)
+
+    **Returns:**
+    - List of sessions with metadata including message count
+
+    **Example:**
+    ```
+    GET /sessions?user_id=vishal
+    ```
+    """
+    try:
+        from agent_registry_service.sessions.db_init import get_connection
+
+        conn = get_connection(session_manager.db_path)
+        cursor = conn.cursor()
+
+        # Build query based on filters
+        if user_id:
+            query = """
+                SELECT s.session_id, s.user_id, s.created_at, s.updated_at,
+                       COUNT(c.id) as message_count
+                FROM sessions s
+                LEFT JOIN conversation_history c ON s.session_id = c.session_id
+                WHERE s.user_id = ?
+                GROUP BY s.session_id
+                ORDER BY s.updated_at DESC
+            """
+            results = cursor.execute(query, (user_id,)).fetchall()
+        else:
+            query = """
+                SELECT s.session_id, s.user_id, s.created_at, s.updated_at,
+                       COUNT(c.id) as message_count
+                FROM sessions s
+                LEFT JOIN conversation_history c ON s.session_id = c.session_id
+                GROUP BY s.session_id
+                ORDER BY s.updated_at DESC
+            """
+            results = cursor.execute(query).fetchall()
+
+        conn.close()
+
+        # Format results
+        sessions = []
+        for row in results:
+            sessions.append({
+                "session_id": row[0],
+                "user_id": row[1],
+                "created_at": row[2],
+                "updated_at": row[3],
+                "message_count": row[4]
+            })
+
+        return {"sessions": sessions}
+
+    except Exception as e:
+        logger.error(f"Error listing sessions: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list sessions: {str(e)}"
+        )
+
+
+@router.get(
     "/{session_id}",
     response_model=SessionResponse,
     summary="Get session data",
