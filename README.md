@@ -57,31 +57,34 @@ python main.py
 
 #### Option B: Web UI (Recommended)
 
-**Prerequisites:**
+**Quick Start - All Services at Once:**
+```bash
+# Start all Phase 2 services (Auth, Registry, and all 3 A2A agents)
+./scripts/start_phase2.sh
+
+# Then in a separate terminal, start the Web UI
+./scripts/start_web_ui.sh
+```
+
+**Or Start Services Individually:**
 ```bash
 # Terminal 1: Auth Service
-cd auth
-python auth_service.py
+./scripts/start_auth_service.sh
 
 # Terminal 2: Registry Service
-cd agent_registry_service
-python registry_service.py
+./scripts/start_registry_service.sh
 
 # Terminal 3: Tickets Agent
-cd agents_phase2/tickets_agent
-python start_tickets_agent.py
+.venv/bin/python -m uvicorn tickets_agent_service.agent:a2a_app --host 0.0.0.0 --port 8080
 
 # Terminal 4: FinOps Agent
-cd agents_phase2/finops_agent
-python start_finops_agent.py
+.venv/bin/python -m uvicorn finops_agent_service.agent:a2a_app --host 0.0.0.0 --port 8081
 
 # Terminal 5: Oxygen Agent
-cd agents_phase2/oxygen_agent
-python start_oxygen_agent.py
+.venv/bin/python -m uvicorn oxygen_agent_service.agent:a2a_app --host 0.0.0.0 --port 8082
 
 # Terminal 6: Web UI Server
-cd web_ui
-python server_phase2.py
+.venv/bin/python -m uvicorn web_ui.server_phase2:app --host localhost --port 9999
 ```
 
 **Access Web UI:**
@@ -99,6 +102,25 @@ Try these queries in the chat:
 - "show my courses"
 - "show AWS cost"
 - "show my tickets and pending exams"
+```
+
+**Verify Services Are Running:**
+```bash
+# Check all service ports
+lsof -i :9998,8003,8080,8081,8082,9999 | grep LISTEN
+
+# Or use the check script
+./scripts/check_phase2_services.sh
+
+# Test individual agent cards
+curl http://localhost:8080/.well-known/agent-card.json  # Tickets
+curl http://localhost:8081/.well-known/agent-card.json  # FinOps
+curl http://localhost:8082/.well-known/agent-card.json  # Oxygen
+```
+
+**Stop All Services:**
+```bash
+./scripts/stop_all_services.sh
 ```
 
 See [Web UI Testing Guide](./docs/WEBUI_TESTING_GUIDE.md) for comprehensive testing instructions.
