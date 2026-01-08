@@ -1,0 +1,57 @@
+# LiteLLM Agent Gateway Configuration
+# This configuration exposes the Agentic Jarvis A2A agents through LiteLLM gateway
+
+# Model configuration (optional - for LLM routing)
+model_list:
+  - model_name: gemini-flash
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GOOGLE_API_KEY
+
+# A2A Agent Configuration
+# These agents are exposed through the LiteLLM gateway
+agents:
+  - agent_id: tickets
+    agent_name: TicketsAgent
+    description: "IT operations ticket management - create tickets, check status, manage operations"
+    base_url: http://localhost:8080
+    auth_type: bearer
+    auth_token: os.environ/JWT_TOKEN
+
+  - agent_id: finops
+    agent_name: FinOpsAgent
+    description: "Cloud cost analytics for AWS, GCP, and Azure - track spending and service costs"
+    base_url: http://localhost:8081
+    auth_type: bearer
+    auth_token: os.environ/JWT_TOKEN
+
+  - agent_id: oxygen
+    agent_name: OxygenAgent
+    description: "Learning & development platform - course management, exam tracking, learning progress"
+    base_url: http://localhost:8082
+    auth_type: bearer
+    auth_token: os.environ/JWT_TOKEN
+
+# Gateway configuration
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: sqlite:///./litellm.db
+
+  # Enable request logging
+  success_callback: ["langfuse"]
+  failure_callback: ["langfuse"]
+
+  # Set timeouts
+  request_timeout: 600
+
+  # Enable CORS for web UI
+  allow_origins: ["*"]
+
+  # Disable model fallbacks (since we're using agents primarily)
+  disable_fallback: false
+
+# Optional: Enable cost tracking
+litellm_settings:
+  success_callback: ["langfuse"]
+  drop_params: true
+  set_verbose: true

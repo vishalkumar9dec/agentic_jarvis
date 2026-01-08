@@ -27,3 +27,6 @@ httpx>=0.25.0
 
 # Utilities
 python-dateutil>=2.8.2
+
+# LiteLLM Gateway
+litellm[proxy]>=1.80.0
